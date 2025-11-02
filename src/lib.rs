@@ -37,7 +37,7 @@
 //! | ML-DSA-87 | Category 5 | ~4.6 KB | High security requirements |
 
 mod algorithm;
-pub mod header;
+mod header; // Internal only
 pub mod keygen;
 pub mod signer;
 pub mod verifier;

@@ -1,8 +1,9 @@
 use super::Signer;
 use crate::algorithm::MlDsaAlgo;
-use crate::header::JwtHeader;
 
-/// Builder for constructing a Signer with optional configuration
+/// Builder for constructing a Signer
+///
+/// The kid (Key ID) is automatically generated from the public key.
 ///
 /// # Example
 /// ```
@@ -14,7 +15,6 @@ use crate::header::JwtHeader;
 /// let signer = Builder::new()
 ///     .algorithm(MlDsaAlgo::Dsa65)
 ///     .private_key(&private_key)
-///     .kid("key-2024-01")
 ///     .build()
 ///     .unwrap();
 ///
@@ -23,8 +23,6 @@ use crate::header::JwtHeader;
 pub struct Builder {
     algo: Option<MlDsaAlgo>,
     private_key: Option<String>,
-    kid: Option<String>,
-    header: Option<JwtHeader>,
 }
 
 impl Builder {
@@ -33,8 +31,6 @@ impl Builder {
         Self {
             algo: None,
             private_key: None,
-            kid: None,
-            header: None,
         }
     }
 
@@ -53,47 +49,6 @@ impl Builder {
     /// * `private_key` - Hex-encoded private key
     pub fn private_key(mut self, private_key: impl Into<String>) -> Self {
         self.private_key = Some(private_key.into());
-        self
-    }
-
-    /// Sets the key ID (kid) for key rotation
-    ///
-    /// # Arguments
-    /// * `kid` - Key identifier
-    pub fn kid(mut self, kid: impl Into<String>) -> Self {
-        self.kid = Some(kid.into());
-        self
-    }
-
-    /// Sets a custom header (overrides algorithm and kid settings)
-    ///
-    /// # Arguments
-    /// * `header` - Pre-configured JWT header
-    ///
-    /// # Example
-    /// ```
-    /// use pq_jwt::{generate_keypair, MlDsaAlgo};
-    /// use pq_jwt::signer::Builder;
-    /// use pq_jwt::header;
-    ///
-    /// let (private_key, _) = generate_keypair(MlDsaAlgo::Dsa65).unwrap();
-    ///
-    /// let custom_header = header::Builder::new()
-    ///     .algorithm("ML-DSA-65")
-    ///     .kid("custom-key")
-    ///     .typ("CustomJWT")
-    ///     .build()
-    ///     .unwrap();
-    ///
-    /// let signer = Builder::new()
-    ///     .algorithm(MlDsaAlgo::Dsa65)
-    ///     .private_key(&private_key)
-    ///     .header(custom_header)
-    ///     .build()
-    ///     .unwrap();
-    /// ```
-    pub fn header(mut self, header: JwtHeader) -> Self {
-        self.header = Some(header);
         self
     }
 
@@ -120,14 +75,7 @@ impl Builder {
         let algo = self.algo.ok_or("Algorithm is required")?;
         let private_key = self.private_key.ok_or("Private key is required")?;
 
-        // Use custom header if provided, otherwise build one
-        let header = if let Some(h) = self.header {
-            h
-        } else {
-            JwtHeader::new(algo.as_str(), self.kid)
-        };
-
-        Ok(Signer::new(algo, private_key, header))
+        Ok(Signer::new(algo, private_key))
     }
 }
 
@@ -153,37 +101,6 @@ mod tests {
             .unwrap();
 
         assert_eq!(signer.algorithm(), MlDsaAlgo::Dsa65);
-        assert_eq!(signer.key_id(), None);
-    }
-
-    #[test]
-    fn test_builder_with_kid() {
-        let (private_key, _) = generate_keypair(MlDsaAlgo::Dsa65).unwrap();
-
-        let signer = Builder::new()
-            .algorithm(MlDsaAlgo::Dsa65)
-            .private_key(&private_key)
-            .kid("key-123")
-            .build()
-            .unwrap();
-
-        assert_eq!(signer.key_id(), Some("key-123"));
-    }
-
-    #[test]
-    fn test_builder_with_custom_header() {
-        let (private_key, _) = generate_keypair(MlDsaAlgo::Dsa87).unwrap();
-
-        let custom_header = JwtHeader::new("ML-DSA-87", Some("custom-key"));
-
-        let signer = Builder::new()
-            .algorithm(MlDsaAlgo::Dsa87)
-            .private_key(&private_key)
-            .header(custom_header)
-            .build()
-            .unwrap();
-
-        assert_eq!(signer.key_id(), Some("custom-key"));
     }
 
     #[test]
@@ -211,7 +128,6 @@ mod tests {
         let signer = Builder::new()
             .algorithm(MlDsaAlgo::Dsa44)
             .private_key(&private_key)
-            .kid("test-key")
             .build()
             .unwrap();
 

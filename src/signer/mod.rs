@@ -11,8 +11,20 @@ use ml_dsa::{
     EncodedSigningKey, KeyGen, MlDsa44, MlDsa65, MlDsa87, Signature, SigningKey,
     signature::Signer as MlDsaSigner,
 };
+use sha2::{Digest, Sha256};
+
+/// Generates a kid (key ID) from a public key using SHA-256 thumbprint
+fn generate_kid_from_pubkey(public_key_hex: &str) -> String {
+    let mut hasher = Sha256::new();
+    hasher.update(public_key_hex.as_bytes());
+    let hash = hasher.finalize();
+    // Take first 16 bytes (32 hex chars) for readability
+    hex::encode(&hash[..16])
+}
 
 /// A stateful signer that holds configuration for signing JWTs
+///
+/// The kid (Key ID) is automatically generated from the public key using SHA-256.
 ///
 /// # Example
 /// ```
@@ -24,7 +36,6 @@ use ml_dsa::{
 /// let signer = Builder::new()
 ///     .algorithm(MlDsaAlgo::Dsa65)
 ///     .private_key(&private_key)
-///     .kid("key-2024-01")
 ///     .build()
 ///     .unwrap();
 ///
@@ -35,7 +46,6 @@ use ml_dsa::{
 pub struct Signer {
     algo: MlDsaAlgo,
     private_key: String,
-    header: JwtHeader,
 }
 
 impl Signer {
@@ -44,13 +54,8 @@ impl Signer {
     /// # Arguments
     /// * `algo` - The ML-DSA algorithm variant
     /// * `private_key` - Hex-encoded private key
-    /// * `header` - Pre-configured JWT header
-    pub(crate) fn new(algo: MlDsaAlgo, private_key: String, header: JwtHeader) -> Self {
-        Self {
-            algo,
-            private_key,
-            header,
-        }
+    pub(crate) fn new(algo: MlDsaAlgo, private_key: String) -> Self {
+        Self { algo, private_key }
     }
 
     /// Signs a payload and returns a JWT string with the public key
@@ -101,8 +106,17 @@ impl Signer {
         // Decode to SigningKey
         let signing_key = SigningKey::<P>::decode(&encoded_key);
 
-        // Serialize header
-        let header_json = serde_json::to_string(&self.header)
+        // Get public key
+        let verifying_key = signing_key.verifying_key();
+        let pub_key_encoded = verifying_key.encode();
+        let pub_key_hex = hex::encode(&pub_key_encoded[..]);
+
+        // Generate kid from public key
+        let kid = generate_kid_from_pubkey(&pub_key_hex);
+
+        // Create header with kid
+        let header = JwtHeader::new(self.algo.as_str(), kid);
+        let header_json = serde_json::to_string(&header)
             .map_err(|e| format!("Failed to serialize header: {}", e))?;
         let header_b64 = URL_SAFE_NO_PAD.encode(header_json.as_bytes());
 
@@ -122,22 +136,12 @@ impl Signer {
         // Create JWT
         let jwt = format!("{}.{}", signing_input, signature_b64);
 
-        // Get public key
-        let verifying_key = signing_key.verifying_key();
-        let pub_key_encoded = verifying_key.encode();
-        let pub_key_hex = hex::encode(&pub_key_encoded[..]);
-
         Ok((jwt, pub_key_hex))
     }
 
     /// Returns the algorithm being used by this signer
     pub fn algorithm(&self) -> MlDsaAlgo {
         self.algo
-    }
-
-    /// Returns the key ID if set
-    pub fn key_id(&self) -> Option<&str> {
-        self.header.key_id()
     }
 }
 
@@ -149,9 +153,7 @@ mod tests {
     #[test]
     fn test_signer_basic() {
         let (private_key, _) = generate_keypair(MlDsaAlgo::Dsa65).unwrap();
-        let header = JwtHeader::new("ML-DSA-65", None::<String>);
-
-        let signer = Signer::new(MlDsaAlgo::Dsa65, private_key, header);
+        let signer = Signer::new(MlDsaAlgo::Dsa65, private_key);
 
         let result = signer.sign("test payload");
         assert!(result.is_ok());
@@ -160,32 +162,25 @@ mod tests {
     #[test]
     fn test_signer_reuse() {
         let (private_key, _) = generate_keypair(MlDsaAlgo::Dsa65).unwrap();
-        let header = JwtHeader::new("ML-DSA-65", Some("key-123"));
-
-        let signer = Signer::new(MlDsaAlgo::Dsa65, private_key, header);
+        let signer = Signer::new(MlDsaAlgo::Dsa65, private_key);
 
         let (jwt1, _) = signer.sign("payload1").unwrap();
         let (jwt2, _) = signer.sign("payload2").unwrap();
 
         assert_ne!(jwt1, jwt2);
-        assert_eq!(signer.key_id(), Some("key-123"));
     }
 
     #[test]
     fn test_signer_getters() {
         let (private_key, _) = generate_keypair(MlDsaAlgo::Dsa87).unwrap();
-        let header = JwtHeader::new("ML-DSA-87", Some("prod-key"));
-
-        let signer = Signer::new(MlDsaAlgo::Dsa87, private_key, header);
+        let signer = Signer::new(MlDsaAlgo::Dsa87, private_key);
 
         assert_eq!(signer.algorithm(), MlDsaAlgo::Dsa87);
-        assert_eq!(signer.key_id(), Some("prod-key"));
     }
 
     #[test]
     fn test_signer_with_invalid_key() {
-        let header = JwtHeader::new("ML-DSA-65", None::<String>);
-        let signer = Signer::new(MlDsaAlgo::Dsa65, "invalid_hex".to_string(), header);
+        let signer = Signer::new(MlDsaAlgo::Dsa65, "invalid_hex".to_string());
 
         let result = signer.sign("test");
         assert!(result.is_err());

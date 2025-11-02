@@ -108,24 +108,25 @@ let (private_key, public_key) = Builder::new()
 
 ### Key Rotation with Key ID (kid)
 
+The Key ID (kid) is automatically generated from the public key using SHA-256, ensuring consistent identification across key rotations.
+
 ```rust
 use pq_jwt::signer::Builder as SignerBuilder;
 use pq_jwt::verifier::Builder as VerifierBuilder;
 use pq_jwt::MlDsaAlgo;
 
-// Generate keypair with versioning
+// Generate keypair
 let (priv_key_v2, pub_key_v2) = generate_keypair(MlDsaAlgo::Dsa65)?;
 
-// Create signer with key ID for rotation
+// Create signer (kid is auto-generated from public key)
 let signer = SignerBuilder::new()
     .algorithm(MlDsaAlgo::Dsa65)
     .private_key(&priv_key_v2)
-    .kid("v2-2024-01")  // Key identifier for rotation
     .build()?;
 
 let (jwt, _) = signer.sign(r#"{"user": "alice"}"#)?;
 
-// Verify (kid is included in JWT header)
+// Verify (kid from JWT header can be used to identify which key to use)
 let verifier = VerifierBuilder::new()
     .public_key(&pub_key_v2)
     .build()?;
@@ -143,7 +144,6 @@ use pq_jwt::verifier::Builder as VerifierBuilder;
 let signer = SignerBuilder::new()
     .algorithm(MlDsaAlgo::Dsa65)
     .private_key(&private_key)
-    .kid("production-key-001")
     .build()?;
 
 // Sign multiple tokens efficiently
@@ -342,9 +342,9 @@ let (priv_key, pub_key) = Builder::new()
 **Methods:**
 - `.algorithm(MlDsaAlgo)` - Set the algorithm variant
 - `.private_key(&str)` - Set the private key
-- `.kid(&str)` - Set key ID for rotation (optional)
-- `.header(JwtHeader)` - Use custom header (optional)
 - `.build()` - Build Signer instance
+
+**Note:** The Key ID (kid) is automatically generated from the public key using SHA-256.
 
 ```rust
 use pq_jwt::signer::Builder;
@@ -352,7 +352,6 @@ use pq_jwt::signer::Builder;
 let signer = Builder::new()
     .algorithm(MlDsaAlgo::Dsa65)
     .private_key(&priv_key)
-    .kid("key-v2")
     .build()?;
 
 let (jwt, pub_key) = signer.sign(payload)?;
@@ -372,23 +371,6 @@ let verifier = Builder::new()
     .build()?;
 
 let payload = verifier.verify(&jwt)?;
-```
-
-#### `header::Builder`
-
-**Methods:**
-- `.algorithm(&str)` - Set the algorithm string
-- `.kid(&str)` - Set key ID (optional)
-- `.typ(&str)` - Set token type (default: "JWT")
-- `.build()` - Build JwtHeader
-
-```rust
-use pq_jwt::header::Builder;
-
-let header = Builder::new()
-    .algorithm("ML-DSA-65")
-    .kid("production-key")
-    .build()?;
 ```
 
 ### Enums
@@ -435,13 +417,13 @@ let (priv_key, pub_key) = Builder::new()
 
 **Key Rotation:**
 ```rust
-// New: Add kid for key rotation
+// New: kid is automatically generated for key rotation
 use pq_jwt::signer::Builder;
 let signer = Builder::new()
     .algorithm(MlDsaAlgo::Dsa65)
     .private_key(&priv_key)
-    .kid("v2-2024-01")
     .build()?;
+// The kid in the JWT header can be used to identify which public key to use
 ```
 
 **Reusable Instances:**
@@ -485,21 +467,22 @@ let private_key = "4343e9e24838dbd8..."; // Never do this
 ### Key Rotation Strategy
 
 ```rust
-// Step 1: Generate new keypair with new kid
+// Step 1: Generate new keypair (kid will be auto-generated)
 let (new_priv, new_pub) = keygen::Builder::new()
     .algorithm(MlDsaAlgo::Dsa65)
     .save_to_file_at("/keys/v3")
     .generate()?;
 
-// Step 2: Create new signer with kid
+// Step 2: Create new signer (kid is auto-generated from public key)
 let signer = signer::Builder::new()
     .algorithm(MlDsaAlgo::Dsa65)
     .private_key(&new_priv)
-    .kid("v3-2024-03")  // Version 3, March 2024
     .build()?;
 
-// Step 3: Keep old public keys for verification
-// Step 4: Gradually phase out old keys
+// Step 3: Store the public key with its auto-generated kid for verification
+// You can extract the kid from a signed JWT's header to identify which key to use
+// Step 4: Keep old public keys for verification during transition period
+// Step 5: Gradually phase out old keys
 ```
 
 ### Token Best Practices
