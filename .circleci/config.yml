@@ -2,7 +2,7 @@ version: 2.1
 
 # Orbs - reusable packages of configuration
 orbs:
-  rust: circleci/rust@1.91.0
+  rust: circleci/rust@1.6.1
 
 # Define executors
 executors:
