@@ -1,0 +1,100 @@
+name: Release Checklist
+
+on:
+  pull_request:
+    branches: [ trunk ]
+    types: [ opened, synchronize, reopened ]
+
+jobs:
+  release-check:
+    name: Pre-Release Validation
+    runs-on: ubuntu-latest
+    if: contains(github.event.pull_request.title, 'release') || contains(github.event.pull_request.labels.*.name, 'release')
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Check version bump
+        run: |
+          echo "Checking if version was bumped..."
+          CURRENT_VERSION=$(cargo metadata --no-deps --format-version 1 | jq -r '.packages[0].version')
+          echo "Current version: $CURRENT_VERSION"
+
+          # Get version from trunk branch
+          git fetch origin trunk
+          TRUNK_VERSION=$(git show origin/trunk:Cargo.toml | grep "^version" | head -1 | cut -d'"' -f2)
+          echo "Trunk branch version: $TRUNK_VERSION"
+
+          if [ "$CURRENT_VERSION" == "$TRUNK_VERSION" ]; then
+            echo "❌ Error: Version not bumped in Cargo.toml"
+            exit 1
+          fi
+          echo "✅ Version bumped: $TRUNK_VERSION → $CURRENT_VERSION"
+
+      - name: Check CHANGELOG exists
+        run: |
+          if [ ! -f CHANGELOG.md ]; then
+            echo "⚠️ Warning: CHANGELOG.md not found"
+            echo "Consider adding a CHANGELOG.md file"
+          else
+            echo "✅ CHANGELOG.md exists"
+          fi
+
+      - name: Verify all tests pass
+        run: cargo test --all-features --verbose
+
+      - name: Check package can be published
+        run: cargo publish --dry-run
+
+      - name: Verify documentation builds
+        run: cargo doc --no-deps --all-features
+
+      - name: Check for TODO/FIXME in code
+        run: |
+          if git grep -i "TODO\|FIXME" -- '*.rs' ':(exclude)target'; then
+            echo "⚠️ Warning: Found TODO/FIXME comments"
+            echo "Consider addressing these before release"
+          else
+            echo "✅ No TODO/FIXME found"
+          fi
+
+      - name: Generate release notes preview
+        run: |
+          echo "## 📝 Pre-Release Summary"
+          echo ""
+          echo "### Version"
+          CURRENT_VERSION=$(cargo metadata --no-deps --format-version 1 | jq -r '.packages[0].version')
+          echo "- Version: v$CURRENT_VERSION"
+          echo ""
+          echo "### Checklist"
+          echo "- ✅ Version bumped"
+          echo "- ✅ Tests passing"
+          echo "- ✅ Dry-run publish successful"
+          echo "- ✅ Documentation builds"
+          echo ""
+          echo "### Next Steps"
+          echo "1. Merge this PR to trunk"
+          echo "2. Create and push a git tag: \`git tag v$CURRENT_VERSION && git push origin v$CURRENT_VERSION\`"
+          echo "3. The publish workflow will automatically publish to crates.io"
+
+      - name: Comment on PR
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const version = require('child_process')
+              .execSync('cargo metadata --no-deps --format-version 1')
+              .toString();
+            const versionNum = JSON.parse(version).packages[0].version;
+
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: `## 🚀 Release Checklist Passed!\n\n✅ All pre-release checks completed successfully.\n\n### Version: \`v${versionNum}\`\n\n### Next Steps:\n1. Merge this PR\n2. Create tag: \`git tag v${versionNum} && git push origin v${versionNum}\`\n3. The publish workflow will automatically deploy to crates.io\n\n---\n*Automated by Release Checklist workflow*`
+            })

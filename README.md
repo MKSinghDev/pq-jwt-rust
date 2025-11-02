@@ -2,6 +2,8 @@
 
 [![Crates.io](https://img.shields.io/crates/v/pq-jwt.svg)](https://crates.io/crates/pq-jwt)
 [![Documentation](https://docs.rs/pq-jwt/badge.svg)](https://docs.rs/pq-jwt)
+[![CircleCI](https://circleci.com/gh/MKSinghDev/pq-jwt-rust.svg?style=shield)](https://circleci.com/gh/MKSinghDev/pq-jwt-rust)
+![CI](https://github.com/MKSinghDev/pq-jwt-rust/workflows/CI/badge.svg)
 [![License](https://img.shields.io/badge/license-MIT%2FApache--2.0-blue.svg)](LICENSE)
 
 **Post-Quantum JWT** - A quantum-resistant JWT implementation using ML-DSA (Module-Lattice Digital Signature Algorithm) signatures.

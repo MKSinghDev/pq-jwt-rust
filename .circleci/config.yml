@@ -1,0 +1,254 @@
+version: 2.1
+
+# Orbs - reusable packages of configuration
+orbs:
+  rust: circleci/rust@1.6.1
+
+# Define executors
+executors:
+  rust-executor:
+    docker:
+      - image: cimg/rust:1.75.0
+    resource_class: medium
+    environment:
+      CARGO_TERM_COLOR: always
+      RUSTFLAGS: -D warnings
+
+# Define jobs
+jobs:
+  # Check code formatting
+  format-check:
+    executor: rust-executor
+    steps:
+      - checkout
+      - run:
+          name: Install rustfmt
+          command: rustup component add rustfmt
+      - run:
+          name: Check formatting
+          command: cargo fmt -- --check
+
+  # Run clippy lints
+  clippy:
+    executor: rust-executor
+    steps:
+      - checkout
+      - restore_cache:
+          keys:
+            - cargo-cache-{{ arch }}-{{ checksum "Cargo.lock" }}
+      - run:
+          name: Install clippy
+          command: rustup component add clippy
+      - run:
+          name: Run clippy
+          command: cargo clippy --all-targets --all-features -- -D warnings
+      - save_cache:
+          key: cargo-cache-{{ arch }}-{{ checksum "Cargo.lock" }}
+          paths:
+            - ~/.cargo/registry
+            - ~/.cargo/git
+            - target
+
+  # Run tests
+  test:
+    executor: rust-executor
+    steps:
+      - checkout
+      - restore_cache:
+          keys:
+            - cargo-cache-{{ arch }}-{{ checksum "Cargo.lock" }}
+      - run:
+          name: Run tests
+          command: cargo test --all-features --verbose
+      - run:
+          name: Run doc tests
+          command: cargo test --doc --verbose
+      - save_cache:
+          key: cargo-cache-{{ arch }}-{{ checksum "Cargo.lock" }}
+          paths:
+            - ~/.cargo/registry
+            - ~/.cargo/git
+            - target
+
+  # Build release binary
+  build:
+    executor: rust-executor
+    steps:
+      - checkout
+      - restore_cache:
+          keys:
+            - cargo-cache-{{ arch }}-{{ checksum "Cargo.lock" }}
+      - run:
+          name: Build release
+          command: cargo build --release --verbose
+      - save_cache:
+          key: cargo-cache-{{ arch }}-{{ checksum "Cargo.lock" }}
+          paths:
+            - ~/.cargo/registry
+            - ~/.cargo/git
+            - target
+      - store_artifacts:
+          path: target/release
+          destination: release-build
+
+  # Security audit
+  security-audit:
+    executor: rust-executor
+    steps:
+      - checkout
+      - run:
+          name: Install cargo-audit
+          command: cargo install cargo-audit
+      - run:
+          name: Run security audit
+          command: cargo audit
+
+  # Check documentation
+  docs:
+    executor: rust-executor
+    steps:
+      - checkout
+      - restore_cache:
+          keys:
+            - cargo-cache-{{ arch }}-{{ checksum "Cargo.lock" }}
+      - run:
+          name: Build documentation
+          command: cargo doc --no-deps --all-features --verbose
+      - save_cache:
+          key: cargo-cache-{{ arch }}-{{ checksum "Cargo.lock" }}
+          paths:
+            - ~/.cargo/registry
+            - ~/.cargo/git
+            - target
+      - store_artifacts:
+          path: target/doc
+          destination: documentation
+
+  # Code coverage
+  coverage:
+    executor: rust-executor
+    steps:
+      - checkout
+      - restore_cache:
+          keys:
+            - cargo-cache-{{ arch }}-{{ checksum "Cargo.lock" }}
+      - run:
+          name: Install tarpaulin
+          command: cargo install cargo-tarpaulin
+      - run:
+          name: Generate coverage
+          command: cargo tarpaulin --out Xml --output-dir coverage
+      - run:
+          name: Upload to codecov
+          command: |
+            bash <(curl -s https://codecov.io/bash) -f coverage/cobertura.xml
+      - store_artifacts:
+          path: coverage
+          destination: coverage-report
+
+  # Benchmarks
+  benchmark:
+    executor: rust-executor
+    steps:
+      - checkout
+      - restore_cache:
+          keys:
+            - cargo-cache-{{ arch }}-{{ checksum "Cargo.lock" }}
+      - run:
+          name: Run benchmarks
+          command: cargo bench --verbose || echo "No benchmarks found"
+      - save_cache:
+          key: cargo-cache-{{ arch }}-{{ checksum "Cargo.lock" }}
+          paths:
+            - ~/.cargo/registry
+            - ~/.cargo/git
+            - target
+
+# Define workflows
+workflows:
+  version: 2
+
+  # Run on every commit to PRs
+  pr-checks:
+    jobs:
+      - format-check:
+          filters:
+            branches:
+              ignore: trunk
+      - clippy:
+          filters:
+            branches:
+              ignore: trunk
+      - test:
+          filters:
+            branches:
+              ignore: trunk
+      - build:
+          filters:
+            branches:
+              ignore: trunk
+          requires:
+            - test
+      - security-audit:
+          filters:
+            branches:
+              ignore: trunk
+      - docs:
+          filters:
+            branches:
+              ignore: trunk
+
+  # Comprehensive checks for trunk branch
+  trunk-checks:
+    jobs:
+      - format-check:
+          filters:
+            branches:
+              only: trunk
+      - clippy:
+          filters:
+            branches:
+              only: trunk
+      - test:
+          filters:
+            branches:
+              only: trunk
+      - build:
+          filters:
+            branches:
+              only: trunk
+          requires:
+            - test
+      - security-audit:
+          filters:
+            branches:
+              only: trunk
+      - docs:
+          filters:
+            branches:
+              only: trunk
+      - coverage:
+          filters:
+            branches:
+              only: trunk
+          requires:
+            - test
+      - benchmark:
+          filters:
+            branches:
+              only: trunk
+          requires:
+            - build
+
+  # Nightly build for trunk
+  nightly:
+    triggers:
+      - schedule:
+          cron: "0 0 * * *"  # Run at midnight UTC
+          filters:
+            branches:
+              only: trunk
+    jobs:
+      - test
+      - security-audit
+      - benchmark
