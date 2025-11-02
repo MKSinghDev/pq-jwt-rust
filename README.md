@@ -2,7 +2,7 @@
 
 [![Crates.io](https://img.shields.io/crates/v/pq-jwt.svg)](https://crates.io/crates/pq-jwt)
 [![Documentation](https://docs.rs/pq-jwt/badge.svg)](https://docs.rs/pq-jwt)
-[![CircleCI](https://circleci.com/gh/MKSinghDev/pq-jwt-rust.svg?style=shield)](https://circleci.com/gh/MKSinghDev/pq-jwt-rust)
+[![CircleCI](https://circleci.com/gh/MKSinghDev/pq-jwt-rust/tree/trunk.svg?style=shield)](https://app.circleci.com/pipelines/github/MKSinghDev/pq-jwt-rust?branch=trunk)
 ![CI](https://github.com/MKSinghDev/pq-jwt-rust/workflows/CI/badge.svg)
 [![License](https://img.shields.io/badge/license-MIT%2FApache--2.0-blue.svg)](LICENSE)
 

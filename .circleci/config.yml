@@ -124,7 +124,7 @@ jobs:
           path: target/doc
           destination: documentation
 
-  # Code coverage
+  # Code coverage (using llvm-cov instead of tarpaulin)
   coverage:
     executor: rust-executor
     steps:
@@ -133,17 +133,21 @@ jobs:
           keys:
             - cargo-cache-{{ arch }}-{{ checksum "Cargo.lock" }}
       - run:
-          name: Install tarpaulin
-          command: cargo install cargo-tarpaulin
+          name: Install llvm-tools
+          command: rustup component add llvm-tools-preview
+      - run:
+          name: Install cargo-llvm-cov
+          command: cargo install cargo-llvm-cov
       - run:
           name: Generate coverage
-          command: cargo tarpaulin --out Xml --output-dir coverage
+          command: |
+            cargo llvm-cov --all-features --workspace --lcov --output-path lcov.info
       - run:
           name: Upload to codecov
           command: |
-            bash <(curl -s https://codecov.io/bash) -f coverage/cobertura.xml
+            bash <(curl -s https://codecov.io/bash) -f lcov.info
       - store_artifacts:
-          path: coverage
+          path: lcov.info
           destination: coverage-report
 
   # Benchmarks
