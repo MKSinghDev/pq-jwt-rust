@@ -80,7 +80,7 @@ cargo update -p pq-jwt
 
 # Dry run publish
 echo -e "${YELLOW}🏗️  Dry run publish...${NC}"
-cargo publish --dry-run || {
+cargo publish --dry-run --allow-dirty || {
     echo -e "${RED}❌ Dry run publish failed${NC}"
     # Revert changes
     sed -i.bak "s/^version = \"$VERSION\"/version = \"$CURRENT_VERSION\"/" Cargo.toml
