@@ -37,16 +37,16 @@
 //! | ML-DSA-87 | Category 5 | ~4.6 KB | High security requirements |
 
 mod algorithm;
-mod header;
-mod keygen;
-mod sign;
-mod verify;
+pub mod header;
+pub mod keygen;
+pub mod signer;
+pub mod verifier;
 
 // Re-export public API
 pub use algorithm::MlDsaAlgo;
 pub use keygen::generate_keypair;
-pub use sign::sign;
-pub use verify::verify;
+pub use signer::sign;
+pub use verifier::verify;
 
 #[cfg(test)]
 mod tests {

@@ -15,6 +15,9 @@
 - ✅ **Quantum-Resistant** - Uses ML-DSA (FIPS 204) signatures that remain secure even against quantum attacks
 - ✅ **Multiple Security Levels** - Choose from ML-DSA-44, ML-DSA-65, or ML-DSA-87 based on your needs
 - ✅ **Standards Compliant** - JWT format following RFC 7519
+- ✅ **Flexible API** - Simple functions and advanced Builder patterns
+- ✅ **Key Management** - Built-in support for saving keys to files
+- ✅ **Key Rotation** - Support for `kid` (Key ID) in JWT headers
 - ✅ **Zero Dependencies Bloat** - Minimal, focused dependencies
 - ✅ **Easy to Use** - Simple, intuitive API
 - ✅ **Well Tested** - Comprehensive test coverage with unit and integration tests
@@ -78,6 +81,88 @@ let (jwt, _) = sign(MlDsaAlgo::Dsa65, user_claims, &private_key)?;
 // Later: verify the token
 let payload = verify(&jwt, &public_key)?;
 println!("Authenticated user: {}", payload);
+```
+
+### Generate Keys with File Storage
+
+```rust
+use pq_jwt::keygen::Builder;
+use pq_jwt::MlDsaAlgo;
+
+// Generate and save to default location (keys/)
+let (private_key, public_key) = Builder::new()
+    .algorithm(MlDsaAlgo::Dsa65)
+    .save_to_file()
+    .generate()?;
+
+// Or save to custom location
+let (private_key, public_key) = Builder::new()
+    .algorithm(MlDsaAlgo::Dsa65)
+    .save_to_file_at("./my-secure-keys")
+    .generate()?;
+
+// Files created:
+// - ml_dsa_65_1704139200_private.key
+// - ml_dsa_65_1704139200_public.key
+```
+
+### Key Rotation with Key ID (kid)
+
+```rust
+use pq_jwt::signer::Builder as SignerBuilder;
+use pq_jwt::verifier::Builder as VerifierBuilder;
+use pq_jwt::MlDsaAlgo;
+
+// Generate keypair with versioning
+let (priv_key_v2, pub_key_v2) = generate_keypair(MlDsaAlgo::Dsa65)?;
+
+// Create signer with key ID for rotation
+let signer = SignerBuilder::new()
+    .algorithm(MlDsaAlgo::Dsa65)
+    .private_key(&priv_key_v2)
+    .kid("v2-2024-01")  // Key identifier for rotation
+    .build()?;
+
+let (jwt, _) = signer.sign(r#"{"user": "alice"}"#)?;
+
+// Verify (kid is included in JWT header)
+let verifier = VerifierBuilder::new()
+    .public_key(&pub_key_v2)
+    .build()?;
+
+let payload = verifier.verify(&jwt)?;
+```
+
+### Reusable Signer and Verifier
+
+```rust
+use pq_jwt::signer::Builder as SignerBuilder;
+use pq_jwt::verifier::Builder as VerifierBuilder;
+
+// Create once, use many times
+let signer = SignerBuilder::new()
+    .algorithm(MlDsaAlgo::Dsa65)
+    .private_key(&private_key)
+    .kid("production-key-001")
+    .build()?;
+
+// Sign multiple tokens efficiently
+let jwt1 = signer.sign(r#"{"user": "alice"}"#)?;
+let jwt2 = signer.sign(r#"{"user": "bob"}"#)?;
+let jwt3 = signer.sign(r#"{"user": "charlie"}"#)?;
+
+// Create reusable verifier
+let verifier = VerifierBuilder::new()
+    .public_key(&public_key)
+    .build()?;
+
+// Verify multiple tokens
+for jwt in [jwt1, jwt2, jwt3] {
+    match verifier.verify(&jwt.0) {
+        Ok(payload) => println!("Valid: {}", payload),
+        Err(e) => println!("Invalid: {}", e),
+    }
+}
 ```
 
 ### API Authentication
@@ -200,7 +285,7 @@ Token Size: ~4.5 KB (vs ~300 bytes for ECDSA)
 
 ## 🛠️ API Reference
 
-### Functions
+### Simple API (Convenience Functions)
 
 #### `generate_keypair(algo: MlDsaAlgo) -> Result<(String, String), String>`
 
@@ -232,6 +317,80 @@ Verifies a JWT and returns the decoded payload.
 let payload = verify(&jwt, &public_key)?;
 ```
 
+### Builder API (Advanced)
+
+#### `keygen::Builder`
+
+**Methods:**
+- `.algorithm(MlDsaAlgo)` - Set the algorithm variant
+- `.save_to_file()` - Save keys to default location (`keys/`)
+- `.save_to_file_at(path)` - Save keys to custom path
+- `.generate()` - Generate keypair (and save if configured)
+- `.build()` - Build KeyGenerator instance
+
+```rust
+use pq_jwt::keygen::Builder;
+
+let (priv_key, pub_key) = Builder::new()
+    .algorithm(MlDsaAlgo::Dsa65)
+    .save_to_file_at("./secure-keys")
+    .generate()?;
+```
+
+#### `signer::Builder`
+
+**Methods:**
+- `.algorithm(MlDsaAlgo)` - Set the algorithm variant
+- `.private_key(&str)` - Set the private key
+- `.kid(&str)` - Set key ID for rotation (optional)
+- `.header(JwtHeader)` - Use custom header (optional)
+- `.build()` - Build Signer instance
+
+```rust
+use pq_jwt::signer::Builder;
+
+let signer = Builder::new()
+    .algorithm(MlDsaAlgo::Dsa65)
+    .private_key(&priv_key)
+    .kid("key-v2")
+    .build()?;
+
+let (jwt, pub_key) = signer.sign(payload)?;
+```
+
+#### `verifier::Builder`
+
+**Methods:**
+- `.public_key(&str)` - Set the public key
+- `.build()` - Build Verifier instance
+
+```rust
+use pq_jwt::verifier::Builder;
+
+let verifier = Builder::new()
+    .public_key(&pub_key)
+    .build()?;
+
+let payload = verifier.verify(&jwt)?;
+```
+
+#### `header::Builder`
+
+**Methods:**
+- `.algorithm(&str)` - Set the algorithm string
+- `.kid(&str)` - Set key ID (optional)
+- `.typ(&str)` - Set token type (default: "JWT")
+- `.build()` - Build JwtHeader
+
+```rust
+use pq_jwt::header::Builder;
+
+let header = Builder::new()
+    .algorithm("ML-DSA-65")
+    .kid("production-key")
+    .build()?;
+```
+
 ### Enums
 
 #### `MlDsaAlgo`
@@ -242,6 +401,62 @@ Available algorithm variants:
 - `MlDsaAlgo::Dsa65` - NIST Category 3 (Recommended)
 - `MlDsaAlgo::Dsa87` - NIST Category 5
 
+**Traits:** `Debug`, `Clone`, `Copy`, `PartialEq`, `Eq`
+
+## 🔄 Migration Guide
+
+### From v0.1.x to v0.2.x
+
+The simple API remains **100% backward compatible**:
+
+```rust
+// This still works exactly the same
+let (priv_key, pub_key) = generate_keypair(MlDsaAlgo::Dsa65)?;
+let (jwt, _) = sign(MlDsaAlgo::Dsa65, payload, &priv_key)?;
+let payload = verify(&jwt, &pub_key)?;
+```
+
+### New Features Available
+
+**Key File Management:**
+```rust
+// Old way - manual file handling
+let (priv_key, pub_key) = generate_keypair(MlDsaAlgo::Dsa65)?;
+std::fs::write("private.key", &priv_key)?;
+std::fs::write("public.key", &pub_key)?;
+
+// New way - built-in
+use pq_jwt::keygen::Builder;
+let (priv_key, pub_key) = Builder::new()
+    .algorithm(MlDsaAlgo::Dsa65)
+    .save_to_file()
+    .generate()?;
+```
+
+**Key Rotation:**
+```rust
+// New: Add kid for key rotation
+use pq_jwt::signer::Builder;
+let signer = Builder::new()
+    .algorithm(MlDsaAlgo::Dsa65)
+    .private_key(&priv_key)
+    .kid("v2-2024-01")
+    .build()?;
+```
+
+**Reusable Instances:**
+```rust
+// New: Create once, use multiple times
+let signer = signer::Builder::new()
+    .algorithm(MlDsaAlgo::Dsa65)
+    .private_key(&priv_key)
+    .build()?;
+
+// Sign multiple payloads efficiently
+let jwt1 = signer.sign("payload1")?;
+let jwt2 = signer.sign("payload2")?;
+```
+
 ## 🔒 Security Considerations
 
 ### Key Management
@@ -250,13 +465,41 @@ Available algorithm variants:
 - **Rotate keys regularly** (every 90 days recommended)
 - **Use environment variables** or secret management systems
 - **Store keys encrypted** at rest
+- **Use file storage with proper permissions** (0600 for private keys)
 
 ```rust
-// ✓ Good
+// ✓ Good - Environment variables
 let private_key = std::env::var("JWT_PRIVATE_KEY")?;
 
-// ✗ Bad
-let private_key = "4343e9e24838dbd8..."; // hardcoded
+// ✓ Good - Secure file storage
+use pq_jwt::keygen::Builder;
+let (priv_key, pub_key) = Builder::new()
+    .algorithm(MlDsaAlgo::Dsa65)
+    .save_to_file_at("/secure/keys")
+    .generate()?;
+
+// ✗ Bad - Hardcoded
+let private_key = "4343e9e24838dbd8..."; // Never do this
+```
+
+### Key Rotation Strategy
+
+```rust
+// Step 1: Generate new keypair with new kid
+let (new_priv, new_pub) = keygen::Builder::new()
+    .algorithm(MlDsaAlgo::Dsa65)
+    .save_to_file_at("/keys/v3")
+    .generate()?;
+
+// Step 2: Create new signer with kid
+let signer = signer::Builder::new()
+    .algorithm(MlDsaAlgo::Dsa65)
+    .private_key(&new_priv)
+    .kid("v3-2024-03")  // Version 3, March 2024
+    .build()?;
+
+// Step 3: Keep old public keys for verification
+// Step 4: Gradually phase out old keys
 ```
 
 ### Token Best Practices

@@ -1,7 +1,9 @@
+use super::Builder;
 use crate::algorithm::MlDsaAlgo;
-use ml_dsa::{KeyGen, KeyPair, MlDsa44, MlDsa65, MlDsa87};
 
 /// Generates a new keypair for the specified ML-DSA algorithm variant
+///
+/// This is a convenience function that wraps the Builder internally.
 ///
 /// # Arguments
 /// * `algo` - The ML-DSA algorithm variant to use
@@ -17,28 +19,7 @@ use ml_dsa::{KeyGen, KeyPair, MlDsa44, MlDsa65, MlDsa87};
 /// let (private_key, public_key) = generate_keypair(MlDsaAlgo::Dsa65).unwrap();
 /// ```
 pub fn generate_keypair(algo: MlDsaAlgo) -> Result<(String, String), String> {
-    match algo {
-        MlDsaAlgo::Dsa44 => generate_keypair_impl::<MlDsa44>(),
-        MlDsaAlgo::Dsa65 => generate_keypair_impl::<MlDsa65>(),
-        MlDsaAlgo::Dsa87 => generate_keypair_impl::<MlDsa87>(),
-    }
-}
-
-fn generate_keypair_impl<P>() -> Result<(String, String), String>
-where
-    P: KeyGen<KeyPair = KeyPair<P>>,
-{
-    let mut rng = rand::rng();
-    let kp = P::key_gen(&mut rng);
-
-    // Extract and encode the signing key
-    let signing_key_encoded = kp.signing_key().encode();
-    let verifying_key_encoded = kp.verifying_key().encode();
-
-    Ok((
-        hex::encode(&signing_key_encoded[..]),
-        hex::encode(&verifying_key_encoded[..]),
-    ))
+    Builder::new().algorithm(algo).generate()
 }
 
 #[cfg(test)]

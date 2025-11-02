@@ -1,5 +1,5 @@
 /// ML-DSA algorithm variants
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum MlDsaAlgo {
     /// ML-DSA-44 - NIST Security Category 2
     Dsa44,
