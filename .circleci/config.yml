@@ -2,13 +2,13 @@ version: 2.1
 
 # Orbs - reusable packages of configuration
 orbs:
-  rust: circleci/rust@1.6.1
+  rust: circleci/rust@1.91.0
 
 # Define executors
 executors:
   rust-executor:
     docker:
-      - image: cimg/rust:1.75.0
+      - image: cimg/rust:1.91.0
     resource_class: medium
     environment:
       CARGO_TERM_COLOR: always
@@ -244,7 +244,7 @@ workflows:
   nightly:
     triggers:
       - schedule:
-          cron: "0 0 * * *"  # Run at midnight UTC
+          cron: "0 0 * * *" # Run at midnight UTC
           filters:
             branches:
               only: trunk
