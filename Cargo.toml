@@ -1,6 +1,6 @@
 [package]
 name = "pq-jwt"
-version = "0.1.1"
+version = "0.1.2"
 edition = "2024"
 authors = ["MKSingh <@MKSingh_Dev>"]
 description = "Post-Quantum JWT implementation using ML-DSA (FIPS 204) signatures for quantum-resistant authentication"
