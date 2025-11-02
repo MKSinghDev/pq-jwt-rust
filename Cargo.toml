@@ -1,0 +1,18 @@
+[package]
+name = "pq-jwt"
+version = "0.1.0"
+edition = "2024"
+authors = ["MKSingh <@MKSingh_Dev>"]
+description = "Post-Quantum JWT implementation using ML-DSA (FIPS 204) signatures for quantum-resistant authentication"
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/MKSinghDev/pq-jwt-rust"
+keywords = ["jwt", "post-quantum", "ml-dsa", "cryptography", "quantum-resistant"]
+categories = ["cryptography", "authentication"]
+
+[dependencies]
+base64 = "0.22.1"
+hex = "0.4.3"
+ml-dsa = "0.1.0-rc.1"
+rand = "0.9.2"
+serde = { version = "1.0.228", features = ["derive"] }
+serde_json = "1.0.145"
