@@ -44,7 +44,7 @@ pub mod verifier;
 
 // Re-export public API
 pub use algorithm::MlDsaAlgo;
-pub use keygen::generate_keypair;
+pub use keygen::{KeySource, generate_keypair};
 pub use signer::sign;
 pub use verifier::verify;
 

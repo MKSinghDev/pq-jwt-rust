@@ -5,6 +5,15 @@ pub use builder::Builder;
 pub use generate::generate_keypair;
 
 use crate::algorithm::MlDsaAlgo;
+
+/// Indicates the source of a keypair when using load_or_generate
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum KeySource {
+    /// Successfully loaded existing key from file or string
+    Loaded,
+    /// Generated new key (file was missing or corrupt)
+    Generated,
+}
 use ml_dsa::{KeyGen as MlDsaKeyGen, KeyPair, MlDsa44, MlDsa65, MlDsa87};
 use std::fs;
 use std::io::Write;

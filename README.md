@@ -83,7 +83,7 @@ let payload = verify(&jwt, &public_key)?;
 println!("Authenticated user: {}", payload);
 ```
 
-### Generate Keys with File Storage
+### Generate and Save Keys to File
 
 ```rust
 use pq_jwt::keygen::Builder;
@@ -103,7 +103,64 @@ let (private_key, public_key) = Builder::new()
 
 // Files created:
 // - ml_dsa_65_1704139200_private.key
-// - ml_dsa_65_1704139200_public.key
+// - ml_dsa_65_1704139200_public.key (derived from private key)
+```
+
+### Load Keys from File
+
+```rust
+use pq_jwt::keygen::{Builder, KeySource};
+use pq_jwt::MlDsaAlgo;
+
+// Load from default location (keys/) - picks latest by timestamp
+let (private_key, public_key, source) = Builder::from(MlDsaAlgo::Dsa65)
+    .file()?;
+
+// Load from custom location
+let (private_key, public_key, source) = Builder::from(MlDsaAlgo::Dsa65)
+    .file_at("./my-secure-keys")?;
+
+// Public key is automatically derived from private key
+assert_eq!(source, KeySource::Loaded);
+```
+
+### Load or Generate Keys (Automatic Fallback)
+
+```rust
+use pq_jwt::keygen::{Builder, KeySource};
+use pq_jwt::MlDsaAlgo;
+
+// Try to load existing key, generate if missing
+let (private_key, public_key, source) = Builder::load_or_generate(MlDsaAlgo::Dsa65)
+    .file()?;
+
+match source {
+    KeySource::Loaded => println!("Using existing key"),
+    KeySource::Generated => println!("Generated new key and saved"),
+}
+
+// Custom location
+let (private_key, public_key, source) = Builder::load_or_generate(MlDsaAlgo::Dsa65)
+    .file_at("./my-secure-keys")?;
+
+// Perfect for server initialization - always has a valid key!
+```
+
+### Load Keys from String (Database/Environment)
+
+```rust
+use pq_jwt::keygen::{Builder, KeySource};
+use pq_jwt::MlDsaAlgo;
+
+// Load private key from database or environment
+let private_key_from_db = std::env::var("JWT_PRIVATE_KEY")?;
+
+// Derive public key from private key
+let (private_key, public_key, source) = Builder::from(MlDsaAlgo::Dsa65)
+    .private_key_str(&private_key_from_db)?;
+
+assert_eq!(source, KeySource::Loaded);
+// Use the keys for signing/verification
 ```
 
 ### Key Rotation with Key ID (kid)
@@ -321,20 +378,42 @@ let payload = verify(&jwt, &public_key)?;
 
 #### `keygen::Builder`
 
-**Methods:**
+**Generation Methods:**
+- `Builder::new()` - Create builder for generation
 - `.algorithm(MlDsaAlgo)` - Set the algorithm variant
 - `.save_to_file()` - Save keys to default location (`keys/`)
 - `.save_to_file_at(path)` - Save keys to custom path
 - `.generate()` - Generate keypair (and save if configured)
-- `.build()` - Build KeyGenerator instance
+- Returns: `(private_key_hex, public_key_hex)`
+
+**Loading Methods:**
+- `Builder::from(algo)` - Create builder for loading (error if missing)
+- `Builder::load_or_generate(algo)` - Load or auto-generate if missing
+- `.file()` - Load from default location (`keys/`), picks latest by timestamp
+- `.file_at(path)` - Load from custom path, picks latest by timestamp
+- `.private_key_str(hex)` - Load from hex string, derives public key
+- Returns: `(private_key_hex, public_key_hex, KeySource)`
 
 ```rust
-use pq_jwt::keygen::Builder;
+use pq_jwt::keygen::{Builder, KeySource};
 
+// Generate and save
 let (priv_key, pub_key) = Builder::new()
     .algorithm(MlDsaAlgo::Dsa65)
     .save_to_file_at("./secure-keys")
     .generate()?;
+
+// Load from file (error if missing)
+let (priv_key, pub_key, source) = Builder::from(MlDsaAlgo::Dsa65)
+    .file_at("./secure-keys")?;
+
+// Load or generate (auto-fallback)
+let (priv_key, pub_key, source) = Builder::load_or_generate(MlDsaAlgo::Dsa65)
+    .file_at("./secure-keys")?;
+
+// Load from string
+let (priv_key, pub_key, source) = Builder::from(MlDsaAlgo::Dsa65)
+    .private_key_str(&hex_string)?;
 ```
 
 #### `signer::Builder`
@@ -384,6 +463,27 @@ Available algorithm variants:
 - `MlDsaAlgo::Dsa87` - NIST Category 5
 
 **Traits:** `Debug`, `Clone`, `Copy`, `PartialEq`, `Eq`
+
+#### `KeySource`
+
+Indicates the source of a keypair when using `load_or_generate`:
+
+- `KeySource::Loaded` - Successfully loaded existing key from file or string
+- `KeySource::Generated` - Generated new key (file was missing or corrupt)
+
+**Traits:** `Debug`, `Clone`, `PartialEq`, `Eq`
+
+```rust
+use pq_jwt::keygen::{Builder, KeySource};
+
+let (priv_key, pub_key, source) = Builder::load_or_generate(MlDsaAlgo::Dsa65)
+    .file()?;
+
+match source {
+    KeySource::Loaded => println!("Reusing existing key"),
+    KeySource::Generated => println!("Created new key"),
+}
+```
 
 ## 🔄 Migration Guide
 
