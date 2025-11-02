@@ -1,9 +1,9 @@
 use crate::algorithm::MlDsaAlgo;
 use crate::header::JwtHeader;
-use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine};
+use base64::{Engine, engine::general_purpose::URL_SAFE_NO_PAD};
 use ml_dsa::{
-    signature::Verifier, EncodedVerifyingKey, KeyGen, MlDsa44, MlDsa65, MlDsa87, Signature,
-    VerifyingKey,
+    EncodedVerifyingKey, KeyGen, MlDsa44, MlDsa65, MlDsa87, Signature, VerifyingKey,
+    signature::Verifier,
 };
 
 /// Verifies a JWT and returns the decoded payload

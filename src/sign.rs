@@ -1,8 +1,8 @@
 use crate::algorithm::MlDsaAlgo;
 use crate::header::JwtHeader;
-use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine};
+use base64::{Engine, engine::general_purpose::URL_SAFE_NO_PAD};
 use ml_dsa::{
-    signature::Signer, EncodedSigningKey, KeyGen, MlDsa44, MlDsa65, MlDsa87, Signature, SigningKey,
+    EncodedSigningKey, KeyGen, MlDsa44, MlDsa65, MlDsa87, Signature, SigningKey, signature::Signer,
 };
 
 /// Signs a payload and returns a JWT string along with the public key
