@@ -7,6 +7,7 @@ use super::Builder;
 /// # Arguments
 /// * `jwt` - The JWT string to verify
 /// * `public_key_hex` - Hex-encoded public verifying key
+/// * `expected_issuer` - Expected issuer that must match the JWT's `iss` claim
 ///
 /// # Returns
 /// * `Ok(payload)` - The decoded payload string if verification succeeds
@@ -22,11 +23,14 @@ use super::Builder;
 /// let now = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs();
 /// let (private_key, public_key) = generate_keypair(MlDsaAlgo::Dsa65).unwrap();
 /// let (jwt, _) = sign(MlDsaAlgo::Dsa65, "https://test.com", now + 3600, &private_key).unwrap();
-/// let verified_payload = verify(&jwt, &public_key).unwrap();
+/// let verified_payload = verify(&jwt, &public_key, "https://test.com").unwrap();
 /// assert!(verified_payload.contains("https://test.com"));
 /// ```
-pub fn verify(jwt: &str, public_key_hex: &str) -> Result<String, String> {
-    let verifier = Builder::new().public_key(public_key_hex).build()?;
+pub fn verify(jwt: &str, public_key_hex: &str, expected_issuer: &str) -> Result<String, String> {
+    let verifier = Builder::new()
+        .public_key(public_key_hex)
+        .issuer(expected_issuer)
+        .build()?;
     verifier.verify(jwt)
 }
 
@@ -53,7 +57,7 @@ mod tests {
         )
         .unwrap();
 
-        let result = verify(&jwt, &public_key);
+        let result = verify(&jwt, &public_key, "https://test.com");
         assert!(result.is_ok());
         let payload = result.unwrap();
         assert!(payload.contains("https://test.com"));
@@ -75,7 +79,7 @@ mod tests {
             &private_key1,
         )
         .unwrap();
-        let result = verify(&jwt, &public_key2);
+        let result = verify(&jwt, &public_key2, "https://test.com");
 
         assert!(result.is_err());
     }
@@ -83,7 +87,7 @@ mod tests {
     #[test]
     fn test_verify_invalid_jwt_format() {
         let (_, public_key) = generate_keypair(MlDsaAlgo::Dsa65).unwrap();
-        let result = verify("invalid.jwt", &public_key);
+        let result = verify("invalid.jwt", &public_key, "https://test.com");
         assert!(result.is_err());
     }
 
@@ -102,7 +106,7 @@ mod tests {
         )
         .unwrap();
 
-        let result = verify(&jwt, &public_key);
+        let result = verify(&jwt, &public_key, "https://test.com");
         assert!(result.is_ok());
         let payload = result.unwrap();
         assert!(payload.contains("https://test.com"));
@@ -117,7 +121,7 @@ mod tests {
         for algo in [MlDsaAlgo::Dsa44, MlDsaAlgo::Dsa65, MlDsaAlgo::Dsa87] {
             let (private_key, public_key) = generate_keypair(algo).unwrap();
             let (jwt, _) = sign(algo, "https://test.com", now + 3600, &private_key).unwrap();
-            let result = verify(&jwt, &public_key);
+            let result = verify(&jwt, &public_key, "https://test.com");
             assert!(result.is_ok());
         }
     }

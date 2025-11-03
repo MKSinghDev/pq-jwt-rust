@@ -54,7 +54,7 @@ fn main() -> Result<(), String> {
     println!("JWT: {}", jwt);
 
     // 3. Verify the JWT
-    let verified_payload = verify(&jwt, &public_key)?;
+    let verified_payload = verify(&jwt, &public_key, "https://myapp.com")?;
     println!("Verified payload: {}", verified_payload);
 
     println!("✓ JWT verified successfully!");
@@ -83,7 +83,7 @@ let (jwt, _) = sign(
 )?;
 
 // Later: verify the token
-let payload = verify(&jwt, &public_key)?;
+let payload = verify(&jwt, &public_key, "https://myapp.com")?;
 println!("Authenticated user: {}", payload);
 ```
 
@@ -116,7 +116,7 @@ let signer = Builder::new()
 let (jwt, _) = signer.sign()?;
 
 // Verify
-let payload = verify(&jwt, &public_key)?;
+let payload = verify(&jwt, &public_key, "https://myapp.com")?;
 println!("Token payload: {}", payload);
 ```
 
@@ -302,7 +302,7 @@ let (api_token, _) = signer.sign()?;
 
 // Client sends: Authorization: Bearer <api_token>
 // Server verifies:
-match verifier::verify(&api_token, &server_public_key) {
+match verifier::verify(&api_token, &server_public_key, "https://api.server.com") {
     Ok(claims) => println!("Valid API token: {}", claims),
     Err(e) => println!("Invalid token: {}", e),
 }
@@ -345,7 +345,7 @@ let signer = Builder::new()
 let (jwt, _) = signer.sign()?;
 
 // Later... verify and extract
-let verified = verify(&jwt, &public_key)?;
+let verified = verify(&jwt, &public_key, "https://myapp.com")?;
 let payload: serde_json::Value = serde_json::from_str(&verified)?;
 let custom: CustomData = serde_json::from_value(payload)?;
 println!("User {} has role: {}", custom.user_id, custom.role);
@@ -454,14 +454,19 @@ let (jwt, pub_key) = sign(
 )?;
 ```
 
-#### `verify(jwt: &str, public_key_hex: &str) -> Result<String, String>`
+#### `verify(jwt: &str, public_key_hex: &str, expected_issuer: &str) -> Result<String, String>`
 
 Verifies a JWT and returns the decoded payload.
+
+**Parameters**:
+- `jwt` - The JWT string to verify
+- `public_key_hex` - Hex-encoded public key
+- `expected_issuer` - Expected issuer that must match the JWT's `iss` claim
 
 **Returns**: `payload` if valid, error otherwise
 
 ```rust
-let payload = verify(&jwt, &public_key)?;
+let payload = verify(&jwt, &public_key, "https://myapp.com")?;
 ```
 
 ### Builder API (Advanced)
@@ -558,11 +563,11 @@ let (jwt, pub_key) = signer.sign()?;
 
 #### `verifier::Builder`
 
-**Configuration Methods:**
+**Required Configuration:**
 - `.public_key(&str)` - Set the public key (REQUIRED)
+- `.issuer(&str)` - Set expected issuer for validation (REQUIRED)
 
-**Claim Validation Methods (Optional):**
-- `.issuer(&str)` - Set expected issuer for validation
+**Optional Claim Validations:**
 - `.audience(&str)` - Set expected audience for validation
 - `.subject(&str)` - Set expected subject for validation
 - `.leeway(u64)` - Set time leeway in seconds for clock skew (default: 0)
@@ -576,31 +581,31 @@ let (jwt, pub_key) = signer.sign()?;
 **Automatic Validations (Always Performed):**
 - ✅ Signature verification (cryptographic)
 - ✅ Expiration check (`exp` must be in the future)
-- ✅ Issuer existence (`iss` claim must exist and not be empty)
+- ✅ Issuer matching (`iss` claim must match expected issuer)
 
 **Optional Validations (Configured via Builder):**
-- Expected issuer matching
-- Expected audience matching
-- Expected subject matching
+- Expected audience matching (if `.audience()` is called)
+- Expected subject matching (if `.subject()` is called)
 - Not before time (`nbf` if present in token)
 
 ```rust
 use pq_jwt::verifier::Builder;
 
-// Basic verification (auto-validates exp and iss)
+// Basic verification - issuer is REQUIRED
 let verifier = Builder::new()
     .public_key(&pub_key)
+    .issuer("https://myapp.com")  // REQUIRED
     .build()?;
 
 let payload = verifier.verify(&jwt)?;
 
-// Advanced verification with claim validation
+// Advanced verification with additional optional validations
 let verifier = Builder::new()
     .public_key(&pub_key)
-    .issuer("https://myapp.com")        // Validate issuer matches
-    .audience("https://api.myapp.com")  // Validate audience matches
-    .subject("user@example.com")        // Validate subject matches
-    .leeway(60)                         // Allow 60s clock skew
+    .issuer("https://myapp.com")        // REQUIRED
+    .audience("https://api.myapp.com")  // Optional: validate audience matches
+    .subject("user@example.com")        // Optional: validate subject matches
+    .leeway(60)                         // Optional: allow 60s clock skew
     .build()?;
 
 let payload = verifier.verify(&jwt)?;

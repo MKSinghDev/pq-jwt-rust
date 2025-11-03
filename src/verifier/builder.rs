@@ -27,8 +27,8 @@ use super::Verifier;
 /// ```
 pub struct Builder {
     public_key: Option<String>,
+    expected_issuer: Option<String>, // REQUIRED
     // Optional claim validations
-    expected_issuer: Option<String>,
     expected_audience: Option<String>,
     expected_subject: Option<String>,
     leeway: u64, // Time leeway in seconds for exp/nbf validation (default: 0)
@@ -55,9 +55,10 @@ impl Builder {
         self
     }
 
-    /// Sets the expected issuer for validation (optional)
+    /// Sets the expected issuer for validation (REQUIRED)
     ///
-    /// If set, the JWT's `iss` claim must match this value.
+    /// The JWT's `iss` claim must match this value, otherwise verification will fail.
+    /// This is a required field and `build()` will return an error if not set.
     ///
     /// # Arguments
     /// * `issuer` - Expected issuer value
@@ -105,6 +106,7 @@ impl Builder {
     ///
     /// let verifier = Builder::new()
     ///     .public_key(&public_key)
+    ///     .issuer("https://myapp.com")
     ///     .leeway(60)  // Allow 60 seconds of clock skew
     ///     .build()
     ///     .unwrap();
@@ -137,9 +139,10 @@ impl Builder {
     /// ```
     pub fn build(self) -> Result<Verifier, String> {
         let public_key = self.public_key.ok_or("Public key is required")?;
+        let expected_issuer = self.expected_issuer.ok_or("Issuer is required")?;
         Ok(Verifier::new(
             public_key,
-            self.expected_issuer,
+            Some(expected_issuer),
             self.expected_audience,
             self.expected_subject,
             self.leeway,
@@ -164,17 +167,30 @@ mod tests {
     fn test_builder_basic() {
         let (_, public_key) = generate_keypair(MlDsaAlgo::Dsa65).unwrap();
 
-        let verifier = Builder::new().public_key(&public_key).build().unwrap();
+        let verifier = Builder::new()
+            .public_key(&public_key)
+            .issuer("https://test.com")
+            .build()
+            .unwrap();
 
         assert_eq!(verifier.public_key(), &public_key);
     }
 
     #[test]
     fn test_builder_missing_public_key() {
-        let result = Builder::new().build();
+        let result = Builder::new().issuer("https://test.com").build();
 
         assert!(result.is_err());
         assert_eq!(result.unwrap_err(), "Public key is required");
+    }
+
+    #[test]
+    fn test_builder_missing_issuer() {
+        let (_, public_key) = generate_keypair(MlDsaAlgo::Dsa65).unwrap();
+        let result = Builder::new().public_key(&public_key).build();
+
+        assert!(result.is_err());
+        assert_eq!(result.unwrap_err(), "Issuer is required");
     }
 
     #[test]
@@ -194,7 +210,11 @@ mod tests {
         )
         .unwrap();
 
-        let verifier = Builder::new().public_key(&public_key).build().unwrap();
+        let verifier = Builder::new()
+            .public_key(&public_key)
+            .issuer("https://test.com")
+            .build()
+            .unwrap();
 
         let result = verifier.verify(&jwt);
         assert!(result.is_ok());
@@ -206,5 +226,6 @@ mod tests {
     fn test_default() {
         let builder = Builder::default();
         assert_eq!(builder.public_key, None);
+        assert_eq!(builder.expected_issuer, None);
     }
 }

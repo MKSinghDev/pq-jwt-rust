@@ -29,7 +29,7 @@
 //! )?;
 //!
 //! // Verify the JWT
-//! let verified_payload = verify(&jwt, &public_key)?;
+//! let verified_payload = verify(&jwt, &public_key, "https://myapp.com")?;
 //! assert!(verified_payload.contains("https://myapp.com"));
 //! # Ok::<(), String>(())
 //! ```
@@ -82,7 +82,7 @@ mod tests {
         assert_eq!(public_key, returned_pub_key);
 
         // Verify JWT
-        let verified_payload = verify(&jwt, &public_key).unwrap();
+        let verified_payload = verify(&jwt, &public_key, "https://test.com").unwrap();
         assert!(verified_payload.contains("https://test.com"));
     }
 
@@ -96,7 +96,7 @@ mod tests {
         for algo in [MlDsaAlgo::Dsa44, MlDsaAlgo::Dsa65, MlDsaAlgo::Dsa87] {
             let (private_key, public_key) = generate_keypair(algo).unwrap();
             let (jwt, _) = sign(algo, "https://test.com", now + 3600, &private_key).unwrap();
-            let verified_payload = verify(&jwt, &public_key).unwrap();
+            let verified_payload = verify(&jwt, &public_key, "https://test.com").unwrap();
             assert!(verified_payload.contains("https://test.com"));
         }
     }
@@ -118,7 +118,7 @@ mod tests {
             &private_key1,
         )
         .unwrap();
-        let result = verify(&jwt, &public_key2);
+        let result = verify(&jwt, &public_key2, "https://test.com");
 
         assert!(result.is_err());
     }

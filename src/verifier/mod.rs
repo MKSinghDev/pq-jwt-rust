@@ -15,16 +15,15 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 /// A stateful verifier that holds configuration for verifying JWTs
 ///
-/// Automatically validates:
+/// Automatically validates (always performed):
 /// - Signature validity
 /// - Token expiration (`exp` claim must be in the future)
-/// - Issuer presence (`iss` claim must exist)
+/// - Issuer presence and matching (`iss` claim must exist and match expected value)
 ///
 /// Optional validations (configured via Builder):
-/// - Expected issuer value
 /// - Expected audience value
 /// - Expected subject value
-/// - Not before time (`nbf` claim)
+/// - Not before time (`nbf` claim if present)
 /// - Time leeway for clock skew
 ///
 /// # Example
@@ -103,6 +102,7 @@ impl Verifier {
     ///
     /// let verifier = Builder::new()
     ///     .public_key(&public_key)
+    ///     .issuer("https://test.com")
     ///     .build()
     ///     .unwrap();
     ///
@@ -295,7 +295,13 @@ mod tests {
         )
         .unwrap();
 
-        let verifier = Verifier::new(public_key, None, None, None, 0);
+        let verifier = Verifier::new(
+            public_key,
+            Some("https://test.com".to_string()),
+            None,
+            None,
+            0,
+        );
         let result = verifier.verify(&jwt);
 
         assert!(result.is_ok());
@@ -310,28 +316,37 @@ mod tests {
             .unwrap()
             .as_secs();
         let (private_key, public_key) = generate_keypair(MlDsaAlgo::Dsa65).unwrap();
+
+        // Both JWTs must have the same issuer since verifier validates issuer
         let (jwt1, _) = sign(
             MlDsaAlgo::Dsa65,
-            "https://test1.com",
+            "https://test.com",
             now + 3600,
             &private_key,
         )
         .unwrap();
         let (jwt2, _) = sign(
             MlDsaAlgo::Dsa65,
-            "https://test2.com",
+            "https://test.com",
             now + 7200,
             &private_key,
         )
         .unwrap();
 
-        let verifier = Verifier::new(public_key, None, None, None, 0);
+        let verifier = Verifier::new(
+            public_key,
+            Some("https://test.com".to_string()),
+            None,
+            None,
+            0,
+        );
 
+        // Verify both JWTs succeed (testing verifier reuse)
         let result1 = verifier.verify(&jwt1).unwrap();
         let result2 = verifier.verify(&jwt2).unwrap();
 
-        assert!(result1.contains("https://test1.com"));
-        assert!(result2.contains("https://test2.com"));
+        assert!(result1.contains("https://test.com"));
+        assert!(result2.contains("https://test.com"));
     }
 
     #[test]
@@ -350,7 +365,13 @@ mod tests {
         )
         .unwrap();
 
-        let verifier = Verifier::new(public_key2, None, None, None, 0);
+        let verifier = Verifier::new(
+            public_key2,
+            Some("https://test.com".to_string()),
+            None,
+            None,
+            0,
+        );
         let result = verifier.verify(&jwt);
 
         assert!(result.is_err());
@@ -359,7 +380,13 @@ mod tests {
     #[test]
     fn test_verifier_invalid_jwt_format() {
         let (_, public_key) = generate_keypair(MlDsaAlgo::Dsa65).unwrap();
-        let verifier = Verifier::new(public_key, None, None, None, 0);
+        let verifier = Verifier::new(
+            public_key,
+            Some("https://test.com".to_string()),
+            None,
+            None,
+            0,
+        );
 
         let result = verifier.verify("invalid.jwt");
         assert!(result.is_err());
@@ -380,7 +407,13 @@ mod tests {
         )
         .unwrap();
 
-        let verifier = Verifier::new(public_key, None, None, None, 0);
+        let verifier = Verifier::new(
+            public_key,
+            Some("https://test.com".to_string()),
+            None,
+            None,
+            0,
+        );
         let result = verifier.verify(&jwt);
 
         assert!(result.is_ok());
@@ -391,7 +424,13 @@ mod tests {
     #[test]
     fn test_verifier_getter() {
         let (_, public_key) = generate_keypair(MlDsaAlgo::Dsa65).unwrap();
-        let verifier = Verifier::new(public_key.clone(), None, None, None, 0);
+        let verifier = Verifier::new(
+            public_key.clone(),
+            Some("https://test.com".to_string()),
+            None,
+            None,
+            0,
+        );
 
         assert_eq!(verifier.public_key(), &public_key);
     }
@@ -457,7 +496,13 @@ mod tests {
 
         let (jwt, _) = signer.sign().unwrap();
 
-        let verifier = Verifier::new(public_key, None, None, None, 0);
+        let verifier = Verifier::new(
+            public_key,
+            Some("https://test.com".to_string()),
+            None,
+            None,
+            0,
+        );
         let result = verifier.verify(&jwt);
 
         assert!(result.is_err());
@@ -488,11 +533,58 @@ mod tests {
         let (jwt, _) = signer.sign().unwrap();
 
         // Should fail without leeway
-        let verifier = Verifier::new(public_key.clone(), None, None, None, 0);
+        let verifier = Verifier::new(
+            public_key.clone(),
+            Some("https://test.com".to_string()),
+            None,
+            None,
+            0,
+        );
         assert!(verifier.verify(&jwt).is_err());
 
         // Should pass with 60 seconds leeway
-        let verifier = Verifier::new(public_key, None, None, None, 60);
+        let verifier = Verifier::new(
+            public_key,
+            Some("https://test.com".to_string()),
+            None,
+            None,
+            60,
+        );
         assert!(verifier.verify(&jwt).is_ok());
+    }
+
+    #[test]
+    fn test_verifier_audience_required_but_missing() {
+        let now = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_secs();
+        let (private_key, public_key) = generate_keypair(MlDsaAlgo::Dsa65).unwrap();
+
+        // Create JWT WITHOUT audience claim using simple sign function
+        let (jwt, _) = crate::signer::sign(
+            MlDsaAlgo::Dsa65,
+            "https://test.com",
+            now + 3600,
+            &private_key,
+        )
+        .unwrap();
+
+        // Verifier requires audience - should FAIL
+        let verifier = Verifier::new(
+            public_key,
+            None,
+            Some("https://api.myapp.com".to_string()),
+            None,
+            0,
+        );
+        let result = verifier.verify(&jwt);
+        assert!(result.is_err());
+        let err_msg = result.unwrap_err();
+        assert!(
+            err_msg.contains("Audience (aud) claim is missing"),
+            "Expected missing audience error, got: {}",
+            err_msg
+        );
     }
 }
