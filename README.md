@@ -712,9 +712,15 @@ let (priv_key, pub_key) = Builder::new()
 ```rust
 // New: kid is automatically generated for key rotation
 use pq_jwt::signer::Builder;
+use std::time::{SystemTime, UNIX_EPOCH};
+
+let now = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs();
+
 let signer = Builder::new()
     .algorithm(MlDsaAlgo::Dsa65)
     .private_key(&priv_key)
+    .issuer("https://myapp.com")
+    .expiration(now + 3600)
     .build()?;
 // The kid in the JWT header can be used to identify which public key to use
 ```
@@ -774,6 +780,10 @@ let private_key = "4343e9e24838dbd8..."; // Never do this
 ### Key Rotation Strategy
 
 ```rust
+use std::time::{SystemTime, UNIX_EPOCH};
+
+let now = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs();
+
 // Step 1: Generate new keypair (kid will be auto-generated)
 let (new_priv, new_pub) = keygen::Builder::new()
     .algorithm(MlDsaAlgo::Dsa65)
@@ -784,6 +794,8 @@ let (new_priv, new_pub) = keygen::Builder::new()
 let signer = signer::Builder::new()
     .algorithm(MlDsaAlgo::Dsa65)
     .private_key(&new_priv)
+    .issuer("https://myapp.com")
+    .expiration(now + 3600)
     .build()?;
 
 // Step 3: Store the public key with its auto-generated kid for verification
