@@ -1,9 +1,11 @@
 use super::Verifier;
 
-/// Builder for constructing a Verifier with optional claim validations
+/// Builder for constructing a Verifier with required and optional claim validations
 ///
-/// The verifier automatically validates `exp` (expiration) and `iss` (issuer) by default.
-/// Additional optional validations can be configured via builder methods.
+/// The verifier requires both `public_key` and `issuer` to be set via the builder.
+/// It automatically validates `exp` (expiration) and the `iss` (issuer) claim against
+/// the provided expected issuer. Additional optional validations (audience, subject)
+/// can be configured via builder methods.
 ///
 /// # Example
 /// ```
@@ -18,7 +20,7 @@ use super::Verifier;
 ///
 /// let verifier = Builder::new()
 ///     .public_key(&public_key)
-///     .issuer("https://test.com")  // Required: expected issuer
+///     .issuer("https://test.com")  // REQUIRED for verification
 ///     .build()
 ///     .unwrap();
 ///
