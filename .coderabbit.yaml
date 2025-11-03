@@ -1,9 +1,9 @@
+# yaml-language-server: $schema=https://coderabbit.ai/integrations/schema.v2.json
 # CodeRabbit Configuration for pq-jwt
 # https://docs.coderabbit.ai/guides/configure-coderabbit
 
-# Language and framework settings
-language: rust
-framework: cargo
+# Language for CodeRabbit comments (natural language)
+language: en-US
 
 # Review settings
 reviews:
