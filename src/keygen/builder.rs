@@ -191,8 +191,8 @@ impl Builder {
     /// - `Builder::load_or_generate()`: Load or generate + save if missing
     ///
     /// # Returns
-    /// - `Builder::from()`: `Ok((private_key_hex, public_key_hex))`
-    /// - `Builder::load_or_generate()`: `Ok((private_key_hex, public_key_hex, KeySource))`
+    /// * `Ok((private_key_hex, public_key_hex, KeySource))` - Keys and source indicator
+    /// * `Err(String)` - Error message if loading fails
     ///
     /// # Example
     /// ```no_run
@@ -203,11 +203,13 @@ impl Builder {
     /// let (priv_key, pub_key, source) = Builder::from(MlDsaAlgo::Dsa65)
     ///     .file()
     ///     .unwrap();
+    /// assert_eq!(source, KeySource::Loaded);
     ///
     /// // Load or generate
     /// let (priv_key, pub_key, source) = Builder::load_or_generate(MlDsaAlgo::Dsa65)
     ///     .file()
     ///     .unwrap();
+    /// // source will be KeySource::Loaded or KeySource::Generated
     /// ```
     pub fn file(self) -> Result<(String, String, KeySource), String> {
         self.file_at("keys")
@@ -223,7 +225,8 @@ impl Builder {
     /// * `path` - Directory path where keys are stored
     ///
     /// # Returns
-    /// Returns `(private_key_hex, public_key_hex, KeySource)`
+    /// * `Ok((private_key_hex, public_key_hex, KeySource))` - Keys and source indicator
+    /// * `Err(String)` - Error message if loading fails
     ///
     /// # Example
     /// ```no_run
@@ -231,14 +234,16 @@ impl Builder {
     /// use pq_jwt::MlDsaAlgo;
     ///
     /// // Load only mode
-    /// let (priv_key, pub_key, _) = Builder::from(MlDsaAlgo::Dsa65)
+    /// let (priv_key, pub_key, source) = Builder::from(MlDsaAlgo::Dsa65)
     ///     .file_at("./my-keys")
     ///     .unwrap();
+    /// assert_eq!(source, KeySource::Loaded);
     ///
     /// // Load or generate mode
     /// let (priv_key, pub_key, source) = Builder::load_or_generate(MlDsaAlgo::Dsa65)
     ///     .file_at("./my-keys")
     ///     .unwrap();
+    /// // source will be KeySource::Loaded or KeySource::Generated
     /// ```
     pub fn file_at(self, path: impl Into<PathBuf>) -> Result<(String, String, KeySource), String> {
         let algo = self.algo.ok_or("Algorithm is required")?;
