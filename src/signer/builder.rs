@@ -36,7 +36,7 @@ pub struct Builder {
     expiration: Option<u64>,
     subject: Option<String>,
     audience: Option<String>,
-    issued_at: Option<Option<u64>>, // None = default to signing time, Some(None) = skip, Some(Some(ts)) = use ts
+    issued_at: Option<u64>, // None = default to signing time, Some(ts) = use ts
     not_before: Option<u64>,
     jwt_id: Option<String>,
     custom: HashMap<String, JsonValue>,
@@ -96,9 +96,14 @@ impl Builder {
     }
 
     /// Sets the issued at time (optional)
-    /// - `None` to skip iat claim entirely
-    /// - Not calling this method defaults iat to signing time
-    pub fn issued_at(mut self, iat: Option<u64>) -> Self {
+    ///
+    /// # Arguments
+    /// * `iat` - Unix timestamp in seconds for the issued at time
+    ///
+    /// # Behavior
+    /// - Not calling this method: `iat` defaults to signing time (auto-populated by `Signer::sign()`)
+    /// - Calling this method: Uses the provided timestamp
+    pub fn issued_at(mut self, iat: u64) -> Self {
         self.issued_at = Some(iat);
         self
     }
@@ -184,8 +189,8 @@ impl Builder {
         claims.jti = self.jwt_id;
         claims.custom = self.custom;
 
-        // Handle iat: None = default to signing time, Some(None) = skip, Some(Some(ts)) = use ts
-        claims.iat = self.issued_at.flatten();
+        // Handle iat: None = default to signing time (auto-populated), Some(ts) = use ts
+        claims.iat = self.issued_at;
 
         Ok(Signer::new(algo, private_key, claims))
     }

@@ -487,7 +487,7 @@ mod tests {
             .private_key(&private_key)
             .issuer("https://test.com")
             .expiration(old_time + 3600) // Expired 1 hour ago
-            .issued_at(Some(old_time))
+            .issued_at(old_time)
             .build()
             .unwrap();
 
@@ -523,7 +523,7 @@ mod tests {
             .private_key(&private_key)
             .issuer("https://test.com")
             .expiration(now - 30) // Expired 30 seconds ago
-            .issued_at(Some(old_time))
+            .issued_at(old_time)
             .build()
             .unwrap();
 
