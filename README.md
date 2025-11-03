@@ -228,6 +228,7 @@ let (jwt, _) = signer.sign()?;
 // Verify (kid from JWT header can be used to identify which key to use)
 let verifier = VerifierBuilder::new()
     .public_key(&pub_key_v2)
+    .issuer("https://myapp.com")
     .build()?;
 
 let payload = verifier.verify(&jwt)?;
@@ -259,6 +260,7 @@ let (jwt3, _) = signer.sign()?;
 // Create reusable verifier
 let verifier = VerifierBuilder::new()
     .public_key(&public_key)
+    .issuer("https://myapp.com")
     .build()?;
 
 // Verify multiple tokens
@@ -873,7 +875,7 @@ async fn protected_route(req: HttpRequest) -> Result<String> {
     let public_key = std::env::var("JWT_PUBLIC_KEY")
         .map_err(|_| actix_web::error::ErrorInternalServerError("Config error"))?;
 
-    match verify(token, &public_key) {
+    match verify(token, &public_key, "https://myapp.com") {
         Ok(payload) => Ok(format!("Authenticated: {}", payload)),
         Err(_) => Err(actix_web::error::ErrorUnauthorized("Invalid token")),
     }
@@ -908,7 +910,7 @@ async fn auth_middleware(
     let public_key = std::env::var("JWT_PUBLIC_KEY")
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
-    verify(token, &public_key)
+    verify(token, &public_key, "https://myapp.com")
         .map_err(|_| StatusCode::UNAUTHORIZED)?;
 
     Ok(next.run(request).await)
