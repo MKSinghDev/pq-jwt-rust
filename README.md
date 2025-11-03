@@ -23,6 +23,61 @@
 - ✅ **Well Tested** - Comprehensive test coverage with unit and integration tests
 - ✅ **Pure Rust** - Memory-safe implementation with no unsafe code
 
+## 📋 Feature Matrix
+
+### JWT Operations & Claims Support
+
+<table>
+<tr>
+<td width="50%">
+
+**Operations**
+- ✅ Sign
+- ✅ Verify
+- ✅ Key Generation
+- ✅ Key Rotation (kid)
+
+**Standard Claims**
+- ✅ iss (issuer)
+- ✅ exp (expiration)
+- ✅ iat (issued at)
+- ✅ sub (subject)
+- ✅ aud (audience)
+- ✅ nbf (not before)
+- ✅ jti (JWT ID)
+
+</td>
+<td width="50%">
+
+**Claim Validation**
+- ✅ iss check
+- ✅ exp check (always)
+- ✅ iat check
+- ✅ sub check
+- ✅ aud check
+- ✅ nbf check
+- ⚠️ jti check (stored, not validated)
+- ✅ typ check (always "JWT")
+- ✅ Leeway support
+
+**Custom Claims**
+- ✅ Arbitrary JSON data
+- ✅ Type-safe deserialization
+
+</td>
+</tr>
+</table>
+
+### Post-Quantum Algorithms
+
+| Algorithm | NIST Level | Status | Use Case |
+|-----------|-----------|--------|----------|
+| **ML-DSA-44** | Category 2 | ✅ Supported | IoT, constrained devices |
+| **ML-DSA-65** | Category 3 | ✅ Supported (Recommended) | General purpose applications |
+| **ML-DSA-87** | Category 5 | ✅ Supported | High-security requirements |
+
+**Note:** This library does NOT support classical algorithms (HS256, RS256, ES256, PS256, EdDSA) as they are vulnerable to quantum attacks. For classical JWT algorithms, use other libraries like `jsonwebtoken`.
+
 ## 📦 Installation
 
 Add this to your `Cargo.toml`:
