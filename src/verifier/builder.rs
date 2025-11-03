@@ -18,7 +18,7 @@ use super::Verifier;
 ///
 /// let verifier = Builder::new()
 ///     .public_key(&public_key)
-///     .issuer("https://test.com")  // Optional: validate issuer
+///     .issuer("https://test.com")  // Required: expected issuer
 ///     .build()
 ///     .unwrap();
 ///
