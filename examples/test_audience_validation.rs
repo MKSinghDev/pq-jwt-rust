@@ -4,8 +4,8 @@ fn main() {
     println!("Testing audience validation in verifier...\n");
 
     // Generate keypair
-    let (private_key, public_key) = pq_jwt::generate_keypair(pq_jwt::MlDsaAlgo::Dsa65)
-        .expect("Failed to generate keypair");
+    let (private_key, public_key) =
+        pq_jwt::generate_keypair(pq_jwt::MlDsaAlgo::Dsa65).expect("Failed to generate keypair");
 
     let now = SystemTime::now()
         .duration_since(UNIX_EPOCH)

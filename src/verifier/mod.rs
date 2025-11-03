@@ -150,8 +150,8 @@ impl Verifier {
             .map_err(|e| format!("Invalid UTF-8 in payload: {}", e))?;
 
         // Parse and validate claims
-        let claims: Claims = serde_json::from_str(&payload)
-            .map_err(|e| format!("Failed to parse claims: {}", e))?;
+        let claims: Claims =
+            serde_json::from_str(&payload).map_err(|e| format!("Failed to parse claims: {}", e))?;
 
         // Validate claims
         self.validate_claims(&claims)?;
@@ -231,10 +231,7 @@ impl Verifier {
         if let Some(nbf) = claims.nbf
             && nbf > now.saturating_add(self.leeway)
         {
-            return Err(format!(
-                "Token not yet valid (nbf={}, now={})",
-                nbf, now
-            ));
+            return Err(format!("Token not yet valid (nbf={}, now={})", nbf, now));
         }
 
         Ok(())

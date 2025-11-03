@@ -3,8 +3,8 @@ use std::time::{SystemTime, UNIX_EPOCH};
 fn main() {
     println!("Testing issuer validation scenarios...\n");
 
-    let (private_key, public_key) = pq_jwt::generate_keypair(pq_jwt::MlDsaAlgo::Dsa65)
-        .expect("Failed to generate keypair");
+    let (private_key, public_key) =
+        pq_jwt::generate_keypair(pq_jwt::MlDsaAlgo::Dsa65).expect("Failed to generate keypair");
 
     let now = SystemTime::now()
         .duration_since(UNIX_EPOCH)
