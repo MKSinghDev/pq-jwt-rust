@@ -558,15 +558,49 @@ let (jwt, pub_key) = signer.sign()?;
 
 #### `verifier::Builder`
 
-**Methods:**
-- `.public_key(&str)` - Set the public key
-- `.build()` - Build Verifier instance
+**Configuration Methods:**
+- `.public_key(&str)` - Set the public key (REQUIRED)
+
+**Claim Validation Methods (Optional):**
+- `.issuer(&str)` - Set expected issuer for validation
+- `.audience(&str)` - Set expected audience for validation
+- `.subject(&str)` - Set expected subject for validation
+- `.leeway(u64)` - Set time leeway in seconds for clock skew (default: 0)
+
+**Build Method:**
+- `.build()` - Build Verifier instance, returns `Result<Verifier, String>`
+
+**Verifier Methods:**
+- `.verify(&str)` - Verify JWT and return payload, returns `Result<String, String>`
+
+**Automatic Validations (Always Performed):**
+- ✅ Signature verification (cryptographic)
+- ✅ Expiration check (`exp` must be in the future)
+- ✅ Issuer existence (`iss` claim must exist and not be empty)
+
+**Optional Validations (Configured via Builder):**
+- Expected issuer matching
+- Expected audience matching
+- Expected subject matching
+- Not before time (`nbf` if present in token)
 
 ```rust
 use pq_jwt::verifier::Builder;
 
+// Basic verification (auto-validates exp and iss)
 let verifier = Builder::new()
     .public_key(&pub_key)
+    .build()?;
+
+let payload = verifier.verify(&jwt)?;
+
+// Advanced verification with claim validation
+let verifier = Builder::new()
+    .public_key(&pub_key)
+    .issuer("https://myapp.com")        // Validate issuer matches
+    .audience("https://api.myapp.com")  // Validate audience matches
+    .subject("user@example.com")        // Validate subject matches
+    .leeway(60)                         // Allow 60s clock skew
     .build()?;
 
 let payload = verifier.verify(&jwt)?;
