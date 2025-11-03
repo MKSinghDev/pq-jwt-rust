@@ -18,9 +18,10 @@ use std::time::{SystemTime, UNIX_EPOCH};
 /// Automatically validates (always performed):
 /// - Signature validity
 /// - Token expiration (`exp` claim must be in the future)
-/// - Issuer presence and matching (`iss` claim must exist and match expected value)
+/// - Issuer presence (`iss` claim must be non-empty)
 ///
 /// Optional validations (configured via Builder):
+/// - Issuer matching (`iss` claim matches expected value, if configured)
 /// - Expected audience value
 /// - Expected subject value
 /// - Not before time (`nbf` claim if present)

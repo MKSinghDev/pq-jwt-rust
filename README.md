@@ -304,7 +304,7 @@ let (api_token, _) = signer.sign()?;
 
 // Client sends: Authorization: Bearer <api_token>
 // Server verifies:
-match verifier::verify(&api_token, &server_public_key, "https://api.server.com") {
+match verifier::verify(&api_token, &server_public_key, "https://api.myapp.com") {
     Ok(claims) => println!("Valid API token: {}", claims),
     Err(e) => println!("Invalid token: {}", e),
 }
@@ -818,15 +818,14 @@ let signer = signer::Builder::new()
 use std::time::{SystemTime, UNIX_EPOCH};
 
 let now = SystemTime::now().duration_since(UNIX_EPOCH)?.as_secs();
-let exp = now + 3600; // 1 hour from now
 
-let payload = format!(r#"{{
-    "sub": "user123",
-    "iat": {},
-    "exp": {}
-}}"#, now, exp);
-
-let (jwt, _) = sign(MlDsaAlgo::Dsa65, &payload, &private_key)?;
+// Sign with issuer and expiration
+let (jwt, _) = sign(
+    MlDsaAlgo::Dsa65,
+    "https://example.com",  // issuer
+    now + 3600,             // expiration (1 hour from now)
+    &private_key
+)?;
 ```
 
 ## 🤔 Why Post-Quantum?

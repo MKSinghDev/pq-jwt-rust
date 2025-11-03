@@ -79,13 +79,14 @@ impl Claims {
             ));
         }
 
-        // Validate nbf <= iat (if both present)
-        if let (Some(nbf), Some(iat)) = (self.nbf, self.iat)
-            && nbf > iat
+        // Validate nbf < exp (if nbf is present)
+        // Ensures the token can be used before it expires
+        if let Some(nbf) = self.nbf
+            && nbf >= self.exp
         {
             return Err(format!(
-                "Not before (nbf={}) must be before or equal to issued at (iat={})",
-                nbf, iat
+                "Not before (nbf={}) must be before expiration (exp={})",
+                nbf, self.exp
             ));
         }
 
@@ -127,6 +128,7 @@ pub struct Signer {
     algo: MlDsaAlgo,
     private_key: String,
     claims: Claims,
+    auto_issue_iat: bool, // If true, auto-populate iat when None
 }
 
 impl Signer {
@@ -136,17 +138,25 @@ impl Signer {
     /// * `algo` - The ML-DSA algorithm variant
     /// * `private_key` - Hex-encoded private key
     /// * `claims` - JWT claims to sign
-    pub(crate) fn new(algo: MlDsaAlgo, private_key: String, claims: Claims) -> Self {
+    /// * `auto_issue_iat` - If true, auto-populate iat when None (default: true)
+    pub(crate) fn new(
+        algo: MlDsaAlgo,
+        private_key: String,
+        claims: Claims,
+        auto_issue_iat: bool,
+    ) -> Self {
         Self {
             algo,
             private_key,
             claims,
+            auto_issue_iat,
         }
     }
 
     /// Signs the configured claims and returns a JWT string with the public key
     ///
-    /// If `iat` (issued at) is not set in claims, it defaults to the current signing time.
+    /// If `iat` (issued at) is not set in claims and `auto_issue_iat` is true,
+    /// it defaults to the current signing time.
     ///
     /// # Returns
     /// * `Ok((jwt, public_key_hex))` - JWT string and hex-encoded public key
@@ -172,9 +182,9 @@ impl Signer {
     /// let (jwt, pub_key) = signer.sign().unwrap();
     /// ```
     pub fn sign(&self) -> Result<(String, String), String> {
-        // Clone claims and set iat to now if not set
+        // Clone claims and set iat to now if not set and auto_issue_iat is enabled
         let mut claims = self.claims.clone();
-        if claims.iat.is_none() {
+        if claims.iat.is_none() && self.auto_issue_iat {
             let now = std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
                 .map_err(|e| format!("Failed to get current time: {}", e))?
@@ -265,7 +275,7 @@ mod tests {
             .as_secs();
 
         let claims = Claims::new("https://test.com", now + 3600);
-        let signer = Signer::new(MlDsaAlgo::Dsa65, private_key, claims);
+        let signer = Signer::new(MlDsaAlgo::Dsa65, private_key, claims, true);
 
         let result = signer.sign();
         assert!(result.is_ok());
@@ -280,10 +290,10 @@ mod tests {
             .as_secs();
 
         let claims1 = Claims::new("https://test.com", now + 3600);
-        let signer1 = Signer::new(MlDsaAlgo::Dsa65, private_key.clone(), claims1);
+        let signer1 = Signer::new(MlDsaAlgo::Dsa65, private_key.clone(), claims1, true);
 
         let claims2 = Claims::new("https://test.com", now + 7200);
-        let signer2 = Signer::new(MlDsaAlgo::Dsa65, private_key, claims2);
+        let signer2 = Signer::new(MlDsaAlgo::Dsa65, private_key, claims2, true);
 
         let (jwt1, _) = signer1.sign().unwrap();
         let (jwt2, _) = signer2.sign().unwrap();
@@ -300,7 +310,7 @@ mod tests {
             .as_secs();
 
         let claims = Claims::new("https://test.com", now + 3600);
-        let signer = Signer::new(MlDsaAlgo::Dsa87, private_key, claims);
+        let signer = Signer::new(MlDsaAlgo::Dsa87, private_key, claims, true);
 
         assert_eq!(signer.algorithm(), MlDsaAlgo::Dsa87);
     }
@@ -312,7 +322,7 @@ mod tests {
             .unwrap()
             .as_secs();
         let claims = Claims::new("https://test.com", now + 3600);
-        let signer = Signer::new(MlDsaAlgo::Dsa65, "invalid_hex".to_string(), claims);
+        let signer = Signer::new(MlDsaAlgo::Dsa65, "invalid_hex".to_string(), claims, true);
 
         let result = signer.sign();
         assert!(result.is_err());
@@ -348,33 +358,35 @@ mod tests {
     }
 
     #[test]
-    fn test_claims_validation_nbf_before_iat() {
+    fn test_claims_validation_nbf_before_exp() {
         let now = SystemTime::now()
             .duration_since(UNIX_EPOCH)
             .unwrap()
             .as_secs();
         let mut claims = Claims::new("https://test.com", now + 3600);
         claims.iat = Some(now);
-        claims.nbf = Some(now - 60);
+        claims.nbf = Some(now + 1800); // nbf is after iat but before exp
 
-        // Should pass: nbf < iat
+        // Should pass: nbf < exp (even if nbf > iat)
         assert!(claims.validate().is_ok());
     }
 
     #[test]
-    fn test_claims_validation_nbf_after_iat_fails() {
+    fn test_claims_validation_nbf_after_exp_fails() {
         let now = SystemTime::now()
             .duration_since(UNIX_EPOCH)
             .unwrap()
             .as_secs();
         let mut claims = Claims::new("https://test.com", now + 3600);
         claims.iat = Some(now);
-        claims.nbf = Some(now + 60);
+        claims.nbf = Some(now + 3600); // nbf equals exp
 
-        // Should fail: nbf > iat
+        // Should fail: nbf >= exp
         let result = claims.validate();
         assert!(result.is_err());
-        assert!(result.unwrap_err().contains("Not before"));
+        let err_msg = result.unwrap_err();
+        assert!(err_msg.contains("Not before"));
+        assert!(err_msg.contains("expiration"));
     }
 
     #[test]
@@ -393,4 +405,37 @@ mod tests {
         assert!(json.contains("role"));
         assert!(json.contains("admin"));
     }
+
+    #[test]
+    fn test_skip_issued_at() {
+        use super::Builder;
+
+        let (private_key, _) = generate_keypair(MlDsaAlgo::Dsa65).unwrap();
+        let now = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_secs();
+
+        // Build signer with skip_issued_at
+        let signer = Builder::new()
+            .algorithm(MlDsaAlgo::Dsa65)
+            .private_key(&private_key)
+            .issuer("https://test.com")
+            .expiration(now + 3600)
+            .skip_issued_at()
+            .build()
+            .unwrap();
+
+        let (jwt, _) = signer.sign().unwrap();
+
+        // Decode and check that iat is not present
+        let parts: Vec<&str> = jwt.split('.').collect();
+        let payload = base64::engine::general_purpose::URL_SAFE_NO_PAD
+            .decode(parts[1])
+            .unwrap();
+        let payload_str = String::from_utf8(payload).unwrap();
+
+        assert!(!payload_str.contains("\"iat\""));
+    }
 }
+

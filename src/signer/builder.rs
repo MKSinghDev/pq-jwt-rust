@@ -36,7 +36,8 @@ pub struct Builder {
     expiration: Option<u64>,
     subject: Option<String>,
     audience: Option<String>,
-    issued_at: Option<u64>, // None = default to signing time, Some(ts) = use ts
+    issued_at: Option<u64>,      // None = auto-populate or skip (based on skip_iat), Some(ts) = use ts
+    skip_iat: bool,               // If true, do not auto-populate iat (default: false)
     not_before: Option<u64>,
     jwt_id: Option<String>,
     custom: HashMap<String, JsonValue>,
@@ -53,6 +54,7 @@ impl Builder {
             subject: None,
             audience: None,
             issued_at: None,
+            skip_iat: false, // Default: auto-populate iat
             not_before: None,
             jwt_id: None,
             custom: HashMap::new(),
@@ -103,8 +105,42 @@ impl Builder {
     /// # Behavior
     /// - Not calling this method: `iat` defaults to signing time (auto-populated by `Signer::sign()`)
     /// - Calling this method: Uses the provided timestamp
+    /// - To skip `iat` entirely, use `.skip_issued_at()` instead
     pub fn issued_at(mut self, iat: u64) -> Self {
         self.issued_at = Some(iat);
+        self.skip_iat = false; // Explicit timestamp means don't skip
+        self
+    }
+
+    /// Skips the issued at time (iat) claim entirely
+    ///
+    /// By default, if `iat` is not set, it will be auto-populated with the signing time.
+    /// Call this method to explicitly skip the `iat` claim in the JWT.
+    ///
+    /// # Example
+    /// ```
+    /// use pq_jwt::{generate_keypair, MlDsaAlgo};
+    /// use pq_jwt::signer::Builder;
+    /// use std::time::{SystemTime, UNIX_EPOCH};
+    ///
+    /// let (private_key, _) = generate_keypair(MlDsaAlgo::Dsa65).unwrap();
+    /// let now = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs();
+    ///
+    /// let signer = Builder::new()
+    ///     .algorithm(MlDsaAlgo::Dsa65)
+    ///     .private_key(&private_key)
+    ///     .issuer("https://myapp.com")
+    ///     .expiration(now + 3600)
+    ///     .skip_issued_at()  // Do not include iat claim
+    ///     .build()
+    ///     .unwrap();
+    ///
+    /// let (jwt, _) = signer.sign().unwrap();
+    /// // JWT will not have an iat claim
+    /// ```
+    pub fn skip_issued_at(mut self) -> Self {
+        self.skip_iat = true;
+        self.issued_at = None;
         self
     }
 
@@ -192,7 +228,10 @@ impl Builder {
         // Handle iat: None = default to signing time (auto-populated), Some(ts) = use ts
         claims.iat = self.issued_at;
 
-        Ok(Signer::new(algo, private_key, claims))
+        // auto_issue_iat = true unless skip_iat was explicitly called
+        let auto_issue_iat = !self.skip_iat;
+
+        Ok(Signer::new(algo, private_key, claims, auto_issue_iat))
     }
 }
 
@@ -365,6 +404,8 @@ mod tests {
 
     #[test]
     fn test_builder_custom_claims_ignore_standard() {
+        use base64::Engine;
+
         let (private_key, _) = generate_keypair(MlDsaAlgo::Dsa65).unwrap();
         let now = SystemTime::now()
             .duration_since(UNIX_EPOCH)
@@ -385,5 +426,38 @@ mod tests {
 
         let result = signer.sign();
         assert!(result.is_ok());
+
+        let (jwt, _) = result.unwrap();
+
+        // Decode the JWT payload to verify claims
+        let parts: Vec<&str> = jwt.split('.').collect();
+        assert_eq!(parts.len(), 3);
+
+        let payload_bytes = base64::engine::general_purpose::URL_SAFE_NO_PAD
+            .decode(parts[1])
+            .unwrap();
+        let payload_str = String::from_utf8(payload_bytes).unwrap();
+        let payload_json: serde_json::Value = serde_json::from_str(&payload_str).unwrap();
+
+        // Verify that the builder's issuer is used, not the custom claim
+        assert_eq!(
+            payload_json["iss"].as_str().unwrap(),
+            "https://myapp.com",
+            "Standard issuer claim should use builder's issuer, not custom claim"
+        );
+
+        // Verify that custom "iss" was ignored
+        assert_ne!(
+            payload_json["iss"].as_str().unwrap(),
+            "https://should-be-ignored.com",
+            "Custom 'iss' claim should be ignored"
+        );
+
+        // Verify that non-standard custom claims are present
+        assert_eq!(
+            payload_json["role"].as_str().unwrap(),
+            "admin",
+            "Custom 'role' claim should be present"
+        );
     }
 }
