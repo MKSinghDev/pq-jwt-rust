@@ -438,4 +438,3 @@ mod tests {
         assert!(!payload_str.contains("\"iat\""));
     }
 }
-

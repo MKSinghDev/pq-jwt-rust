@@ -36,8 +36,8 @@ pub struct Builder {
     expiration: Option<u64>,
     subject: Option<String>,
     audience: Option<String>,
-    issued_at: Option<u64>,      // None = auto-populate or skip (based on skip_iat), Some(ts) = use ts
-    skip_iat: bool,               // If true, do not auto-populate iat (default: false)
+    issued_at: Option<u64>, // None = auto-populate or skip (based on skip_iat), Some(ts) = use ts
+    skip_iat: bool,         // If true, do not auto-populate iat (default: false)
     not_before: Option<u64>,
     jwt_id: Option<String>,
     custom: HashMap<String, JsonValue>,
