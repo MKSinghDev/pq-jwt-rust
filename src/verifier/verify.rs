@@ -17,12 +17,13 @@ use super::Builder;
 /// use pq_jwt::{generate_keypair, MlDsaAlgo};
 /// use pq_jwt::signer::sign;
 /// use pq_jwt::verifier::verify;
+/// use std::time::{SystemTime, UNIX_EPOCH};
 ///
+/// let now = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs();
 /// let (private_key, public_key) = generate_keypair(MlDsaAlgo::Dsa65).unwrap();
-/// let payload = r#"{"user":"alice"}"#;
-/// let (jwt, _) = sign(MlDsaAlgo::Dsa65, payload, &private_key).unwrap();
+/// let (jwt, _) = sign(MlDsaAlgo::Dsa65, "https://test.com", now + 3600, &private_key).unwrap();
 /// let verified_payload = verify(&jwt, &public_key).unwrap();
-/// assert_eq!(payload, verified_payload);
+/// assert!(verified_payload.contains("https://test.com"));
 /// ```
 pub fn verify(jwt: &str, public_key_hex: &str) -> Result<String, String> {
     let verifier = Builder::new().public_key(public_key_hex).build()?;
@@ -35,24 +36,45 @@ mod tests {
     use crate::MlDsaAlgo;
     use crate::keygen::generate_keypair;
     use crate::signer::sign;
+    use std::time::{SystemTime, UNIX_EPOCH};
 
     #[test]
     fn test_verify_valid_jwt() {
+        let now = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_secs();
         let (private_key, public_key) = generate_keypair(MlDsaAlgo::Dsa65).unwrap();
-        let payload = "test payload";
-        let (jwt, _) = sign(MlDsaAlgo::Dsa65, payload, &private_key).unwrap();
+        let (jwt, _) = sign(
+            MlDsaAlgo::Dsa65,
+            "https://test.com",
+            now + 3600,
+            &private_key,
+        )
+        .unwrap();
 
         let result = verify(&jwt, &public_key);
         assert!(result.is_ok());
-        assert_eq!(result.unwrap(), payload);
+        let payload = result.unwrap();
+        assert!(payload.contains("https://test.com"));
     }
 
     #[test]
     fn test_verify_with_wrong_key() {
+        let now = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_secs();
         let (private_key1, _) = generate_keypair(MlDsaAlgo::Dsa65).unwrap();
         let (_, public_key2) = generate_keypair(MlDsaAlgo::Dsa65).unwrap();
 
-        let (jwt, _) = sign(MlDsaAlgo::Dsa65, "test", &private_key1).unwrap();
+        let (jwt, _) = sign(
+            MlDsaAlgo::Dsa65,
+            "https://test.com",
+            now + 3600,
+            &private_key1,
+        )
+        .unwrap();
         let result = verify(&jwt, &public_key2);
 
         assert!(result.is_err());
@@ -67,20 +89,34 @@ mod tests {
 
     #[test]
     fn test_verify_json_payload() {
+        let now = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_secs();
         let (private_key, public_key) = generate_keypair(MlDsaAlgo::Dsa65).unwrap();
-        let payload = r#"{"sub":"123","name":"Alice"}"#;
-        let (jwt, _) = sign(MlDsaAlgo::Dsa65, payload, &private_key).unwrap();
+        let (jwt, _) = sign(
+            MlDsaAlgo::Dsa65,
+            "https://test.com",
+            now + 3600,
+            &private_key,
+        )
+        .unwrap();
 
         let result = verify(&jwt, &public_key);
         assert!(result.is_ok());
-        assert_eq!(result.unwrap(), payload);
+        let payload = result.unwrap();
+        assert!(payload.contains("https://test.com"));
     }
 
     #[test]
     fn test_verify_all_algorithms() {
+        let now = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_secs();
         for algo in [MlDsaAlgo::Dsa44, MlDsaAlgo::Dsa65, MlDsaAlgo::Dsa87] {
             let (private_key, public_key) = generate_keypair(algo).unwrap();
-            let (jwt, _) = sign(algo, "test", &private_key).unwrap();
+            let (jwt, _) = sign(algo, "https://test.com", now + 3600, &private_key).unwrap();
             let result = verify(&jwt, &public_key);
             assert!(result.is_ok());
         }

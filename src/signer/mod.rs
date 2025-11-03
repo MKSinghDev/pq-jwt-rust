@@ -11,7 +11,10 @@ use ml_dsa::{
     EncodedSigningKey, KeyGen, MlDsa44, MlDsa65, MlDsa87, Signature, SigningKey,
     signature::Signer as MlDsaSigner,
 };
+use serde::{Deserialize, Serialize};
+use serde_json::Value as JsonValue;
 use sha2::{Digest, Sha256};
+use std::collections::HashMap;
 
 /// Generates a kid (key ID) from a public key using SHA-256 thumbprint
 fn generate_kid_from_pubkey(public_key_hex: &str) -> String {
@@ -22,30 +25,108 @@ fn generate_kid_from_pubkey(public_key_hex: &str) -> String {
     hex::encode(&hash[..16])
 }
 
+/// JWT Claims structure containing standard and custom claims
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Claims {
+    /// Issuer (REQUIRED)
+    pub iss: String,
+    /// Expiration time (REQUIRED) - Unix timestamp
+    pub exp: u64,
+    /// Issued at (optional, defaults to signing time) - Unix timestamp
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub iat: Option<u64>,
+    /// Subject (optional)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub sub: Option<String>,
+    /// Audience (optional)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub aud: Option<String>,
+    /// Not before (optional) - Unix timestamp
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub nbf: Option<u64>,
+    /// JWT ID (optional)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub jti: Option<String>,
+    /// Additional custom claims
+    #[serde(flatten)]
+    pub custom: HashMap<String, JsonValue>,
+}
+
+impl Claims {
+    /// Creates a new Claims with required fields
+    pub fn new(iss: impl Into<String>, exp: u64) -> Self {
+        Self {
+            iss: iss.into(),
+            exp,
+            iat: None,
+            sub: None,
+            aud: None,
+            nbf: None,
+            jti: None,
+            custom: HashMap::new(),
+        }
+    }
+
+    /// Validates the claims
+    pub fn validate(&self) -> Result<(), String> {
+        // Validate exp > iat (if iat is present)
+        if let Some(iat) = self.iat
+            && self.exp <= iat
+        {
+            return Err(format!(
+                "Expiration (exp={}) must be after issued at (iat={})",
+                self.exp, iat
+            ));
+        }
+
+        // Validate nbf <= iat (if both present)
+        if let (Some(nbf), Some(iat)) = (self.nbf, self.iat)
+            && nbf > iat
+        {
+            return Err(format!(
+                "Not before (nbf={}) must be before or equal to issued at (iat={})",
+                nbf, iat
+            ));
+        }
+
+        Ok(())
+    }
+
+    /// Converts claims to JSON string
+    pub fn to_json(&self) -> Result<String, String> {
+        serde_json::to_string(self).map_err(|e| format!("Failed to serialize claims: {}", e))
+    }
+}
+
 /// A stateful signer that holds configuration for signing JWTs
 ///
 /// The kid (Key ID) is automatically generated from the public key using SHA-256.
+/// Claims are configured via the Builder and validated before signing.
 ///
 /// # Example
 /// ```
 /// use pq_jwt::{generate_keypair, MlDsaAlgo};
 /// use pq_jwt::signer::Builder;
+/// use std::time::{SystemTime, UNIX_EPOCH};
 ///
 /// let (private_key, _) = generate_keypair(MlDsaAlgo::Dsa65).unwrap();
+/// let now = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs();
 ///
 /// let signer = Builder::new()
 ///     .algorithm(MlDsaAlgo::Dsa65)
 ///     .private_key(&private_key)
+///     .issuer("https://myapp.com")
+///     .expiration(now + 3600)
 ///     .build()
 ///     .unwrap();
 ///
-/// let payload = r#"{"user":"alice"}"#;
-/// let (jwt, pub_key) = signer.sign(payload).unwrap();
+/// let (jwt, pub_key) = signer.sign().unwrap();
 /// ```
 #[derive(Debug)]
 pub struct Signer {
     algo: MlDsaAlgo,
     private_key: String,
+    claims: Claims,
 }
 
 impl Signer {
@@ -54,14 +135,18 @@ impl Signer {
     /// # Arguments
     /// * `algo` - The ML-DSA algorithm variant
     /// * `private_key` - Hex-encoded private key
-    pub(crate) fn new(algo: MlDsaAlgo, private_key: String) -> Self {
-        Self { algo, private_key }
+    /// * `claims` - JWT claims to sign
+    pub(crate) fn new(algo: MlDsaAlgo, private_key: String, claims: Claims) -> Self {
+        Self {
+            algo,
+            private_key,
+            claims,
+        }
     }
 
-    /// Signs a payload and returns a JWT string with the public key
+    /// Signs the configured claims and returns a JWT string with the public key
     ///
-    /// # Arguments
-    /// * `payload` - The payload to sign (will be base64url encoded)
+    /// If `iat` (issued at) is not set in claims, it defaults to the current signing time.
     ///
     /// # Returns
     /// * `Ok((jwt, public_key_hex))` - JWT string and hex-encoded public key
@@ -71,23 +156,42 @@ impl Signer {
     /// ```
     /// use pq_jwt::{generate_keypair, MlDsaAlgo};
     /// use pq_jwt::signer::Builder;
+    /// use std::time::{SystemTime, UNIX_EPOCH};
     ///
     /// let (private_key, _) = generate_keypair(MlDsaAlgo::Dsa65).unwrap();
+    /// let now = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs();
     ///
     /// let signer = Builder::new()
     ///     .algorithm(MlDsaAlgo::Dsa65)
     ///     .private_key(&private_key)
+    ///     .issuer("https://myapp.com")
+    ///     .expiration(now + 3600)
     ///     .build()
     ///     .unwrap();
     ///
-    /// let (jwt1, _) = signer.sign(r#"{"user":"alice"}"#).unwrap();
-    /// let (jwt2, _) = signer.sign(r#"{"user":"bob"}"#).unwrap();
+    /// let (jwt, pub_key) = signer.sign().unwrap();
     /// ```
-    pub fn sign(&self, payload: &str) -> Result<(String, String), String> {
+    pub fn sign(&self) -> Result<(String, String), String> {
+        // Clone claims and set iat to now if not set
+        let mut claims = self.claims.clone();
+        if claims.iat.is_none() {
+            let now = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map_err(|e| format!("Failed to get current time: {}", e))?
+                .as_secs();
+            claims.iat = Some(now);
+        }
+
+        // Validate claims
+        claims.validate()?;
+
+        // Convert claims to JSON
+        let payload = claims.to_json()?;
+
         match self.algo {
-            MlDsaAlgo::Dsa44 => self.sign_impl::<MlDsa44>(payload),
-            MlDsaAlgo::Dsa65 => self.sign_impl::<MlDsa65>(payload),
-            MlDsaAlgo::Dsa87 => self.sign_impl::<MlDsa87>(payload),
+            MlDsaAlgo::Dsa44 => self.sign_impl::<MlDsa44>(&payload),
+            MlDsaAlgo::Dsa65 => self.sign_impl::<MlDsa65>(&payload),
+            MlDsaAlgo::Dsa87 => self.sign_impl::<MlDsa87>(&payload),
         }
     }
 
@@ -149,23 +253,40 @@ impl Signer {
 mod tests {
     use super::*;
     use crate::keygen::generate_keypair;
+    use serde_json::json;
+    use std::time::{SystemTime, UNIX_EPOCH};
 
     #[test]
     fn test_signer_basic() {
         let (private_key, _) = generate_keypair(MlDsaAlgo::Dsa65).unwrap();
-        let signer = Signer::new(MlDsaAlgo::Dsa65, private_key);
+        let now = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_secs();
 
-        let result = signer.sign("test payload");
+        let claims = Claims::new("https://test.com", now + 3600);
+        let signer = Signer::new(MlDsaAlgo::Dsa65, private_key, claims);
+
+        let result = signer.sign();
         assert!(result.is_ok());
     }
 
     #[test]
     fn test_signer_reuse() {
         let (private_key, _) = generate_keypair(MlDsaAlgo::Dsa65).unwrap();
-        let signer = Signer::new(MlDsaAlgo::Dsa65, private_key);
+        let now = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_secs();
 
-        let (jwt1, _) = signer.sign("payload1").unwrap();
-        let (jwt2, _) = signer.sign("payload2").unwrap();
+        let claims1 = Claims::new("https://test.com", now + 3600);
+        let signer1 = Signer::new(MlDsaAlgo::Dsa65, private_key.clone(), claims1);
+
+        let claims2 = Claims::new("https://test.com", now + 7200);
+        let signer2 = Signer::new(MlDsaAlgo::Dsa65, private_key, claims2);
+
+        let (jwt1, _) = signer1.sign().unwrap();
+        let (jwt2, _) = signer2.sign().unwrap();
 
         assert_ne!(jwt1, jwt2);
     }
@@ -173,17 +294,103 @@ mod tests {
     #[test]
     fn test_signer_getters() {
         let (private_key, _) = generate_keypair(MlDsaAlgo::Dsa87).unwrap();
-        let signer = Signer::new(MlDsaAlgo::Dsa87, private_key);
+        let now = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_secs();
+
+        let claims = Claims::new("https://test.com", now + 3600);
+        let signer = Signer::new(MlDsaAlgo::Dsa87, private_key, claims);
 
         assert_eq!(signer.algorithm(), MlDsaAlgo::Dsa87);
     }
 
     #[test]
     fn test_signer_with_invalid_key() {
-        let signer = Signer::new(MlDsaAlgo::Dsa65, "invalid_hex".to_string());
+        let now = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_secs();
+        let claims = Claims::new("https://test.com", now + 3600);
+        let signer = Signer::new(MlDsaAlgo::Dsa65, "invalid_hex".to_string(), claims);
 
-        let result = signer.sign("test");
+        let result = signer.sign();
         assert!(result.is_err());
         assert!(result.unwrap_err().contains("Invalid hex private key"));
+    }
+
+    #[test]
+    fn test_claims_validation_exp_after_iat() {
+        let now = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_secs();
+        let mut claims = Claims::new("https://test.com", now + 3600);
+        claims.iat = Some(now);
+
+        // Should pass: exp > iat
+        assert!(claims.validate().is_ok());
+    }
+
+    #[test]
+    fn test_claims_validation_exp_before_iat_fails() {
+        let now = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_secs();
+        let mut claims = Claims::new("https://test.com", now);
+        claims.iat = Some(now + 3600);
+
+        // Should fail: exp <= iat
+        let result = claims.validate();
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("Expiration"));
+    }
+
+    #[test]
+    fn test_claims_validation_nbf_before_iat() {
+        let now = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_secs();
+        let mut claims = Claims::new("https://test.com", now + 3600);
+        claims.iat = Some(now);
+        claims.nbf = Some(now - 60);
+
+        // Should pass: nbf < iat
+        assert!(claims.validate().is_ok());
+    }
+
+    #[test]
+    fn test_claims_validation_nbf_after_iat_fails() {
+        let now = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_secs();
+        let mut claims = Claims::new("https://test.com", now + 3600);
+        claims.iat = Some(now);
+        claims.nbf = Some(now + 60);
+
+        // Should fail: nbf > iat
+        let result = claims.validate();
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("Not before"));
+    }
+
+    #[test]
+    fn test_claims_with_custom_data() {
+        let now = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_secs();
+        let mut claims = Claims::new("https://test.com", now + 3600);
+        claims.custom.insert("role".to_string(), json!("admin"));
+        claims
+            .custom
+            .insert("permissions".to_string(), json!(["read", "write"]));
+
+        let json = claims.to_json().unwrap();
+        assert!(json.contains("role"));
+        assert!(json.contains("admin"));
     }
 }

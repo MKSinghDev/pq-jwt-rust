@@ -36,20 +36,26 @@ pq-jwt = "0.1.0"
 
 ```rust
 use pq_jwt::{generate_keypair, sign, verify, MlDsaAlgo};
+use std::time::{SystemTime, UNIX_EPOCH};
 
 fn main() -> Result<(), String> {
     // 1. Generate a keypair
     let (private_key, public_key) = generate_keypair(MlDsaAlgo::Dsa65)?;
 
-    // 2. Create and sign a JWT
-    let payload = r#"{"user_id": 42, "role": "admin", "exp": 1735689600}"#;
-    let (jwt, _) = sign(MlDsaAlgo::Dsa65, payload, &private_key)?;
+    // 2. Create and sign a JWT with issuer and expiration
+    let now = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs();
+    let (jwt, _) = sign(
+        MlDsaAlgo::Dsa65,
+        "https://myapp.com",      // Issuer
+        now + 3600,                // Expires in 1 hour
+        &private_key
+    )?;
 
     println!("JWT: {}", jwt);
 
     // 3. Verify the JWT
     let verified_payload = verify(&jwt, &public_key)?;
-    assert_eq!(payload, verified_payload);
+    println!("Verified payload: {}", verified_payload);
 
     println!("✓ JWT verified successfully!");
     Ok(())
@@ -58,29 +64,60 @@ fn main() -> Result<(), String> {
 
 ## 📚 Usage Examples
 
-### Basic Authentication Token
+### Basic Authentication Token (Simple API)
 
 ```rust
 use pq_jwt::{generate_keypair, sign, verify, MlDsaAlgo};
+use std::time::{SystemTime, UNIX_EPOCH};
 
 // Generate long-term keypair (store securely!)
 let (private_key, public_key) = generate_keypair(MlDsaAlgo::Dsa65)?;
 
 // Create user session token
-let user_claims = r#"{
-    "sub": "user123",
-    "name": "Alice",
-    "role": "admin",
-    "iat": 1704067200,
-    "exp": 1704153600
-}"#;
-
-// Sign the token
-let (jwt, _) = sign(MlDsaAlgo::Dsa65, user_claims, &private_key)?;
+let now = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs();
+let (jwt, _) = sign(
+    MlDsaAlgo::Dsa65,
+    "https://myapp.com",    // Issuer
+    now + 3600,              // Expires in 1 hour
+    &private_key
+)?;
 
 // Later: verify the token
 let payload = verify(&jwt, &public_key)?;
 println!("Authenticated user: {}", payload);
+```
+
+### Advanced Authentication Token (Builder API with Custom Claims)
+
+```rust
+use pq_jwt::signer::Builder;
+use pq_jwt::MlDsaAlgo;
+use std::time::{SystemTime, UNIX_EPOCH};
+use serde_json::json;
+
+let (private_key, public_key) = generate_keypair(MlDsaAlgo::Dsa65)?;
+let now = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs();
+
+// Create signer with all standard claims and custom data
+let signer = Builder::new()
+    .algorithm(MlDsaAlgo::Dsa65)
+    .private_key(&private_key)
+    .issuer("https://myapp.com")
+    .expiration(now + 3600)
+    .subject("user123")
+    .audience("https://api.myapp.com")
+    .custom_claims(json!({
+        "name": "Alice",
+        "role": "admin",
+        "permissions": ["read", "write", "delete"]
+    }))
+    .build()?;
+
+let (jwt, _) = signer.sign()?;
+
+// Verify
+let payload = verify(&jwt, &public_key)?;
+println!("Token payload: {}", payload);
 ```
 
 ### Generate and Save Keys to File
@@ -170,7 +207,10 @@ The Key ID (kid) is automatically generated from the public key using SHA-256, e
 ```rust
 use pq_jwt::signer::Builder as SignerBuilder;
 use pq_jwt::verifier::Builder as VerifierBuilder;
-use pq_jwt::MlDsaAlgo;
+use pq_jwt::{generate_keypair, MlDsaAlgo};
+use std::time::{SystemTime, UNIX_EPOCH};
+
+let now = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs();
 
 // Generate keypair
 let (priv_key_v2, pub_key_v2) = generate_keypair(MlDsaAlgo::Dsa65)?;
@@ -179,9 +219,11 @@ let (priv_key_v2, pub_key_v2) = generate_keypair(MlDsaAlgo::Dsa65)?;
 let signer = SignerBuilder::new()
     .algorithm(MlDsaAlgo::Dsa65)
     .private_key(&priv_key_v2)
+    .issuer("https://myapp.com")
+    .expiration(now + 3600)
     .build()?;
 
-let (jwt, _) = signer.sign(r#"{"user": "alice"}"#)?;
+let (jwt, _) = signer.sign()?;
 
 // Verify (kid from JWT header can be used to identify which key to use)
 let verifier = VerifierBuilder::new()
@@ -196,17 +238,23 @@ let payload = verifier.verify(&jwt)?;
 ```rust
 use pq_jwt::signer::Builder as SignerBuilder;
 use pq_jwt::verifier::Builder as VerifierBuilder;
+use pq_jwt::MlDsaAlgo;
+use std::time::{SystemTime, UNIX_EPOCH};
+
+let now = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs();
 
 // Create once, use many times
 let signer = SignerBuilder::new()
     .algorithm(MlDsaAlgo::Dsa65)
     .private_key(&private_key)
+    .issuer("https://myapp.com")
+    .expiration(now + 3600)
     .build()?;
 
-// Sign multiple tokens efficiently
-let jwt1 = signer.sign(r#"{"user": "alice"}"#)?;
-let jwt2 = signer.sign(r#"{"user": "bob"}"#)?;
-let jwt3 = signer.sign(r#"{"user": "charlie"}"#)?;
+// Sign (no parameters needed - uses configured claims)
+let (jwt1, _) = signer.sign()?;
+let (jwt2, _) = signer.sign()?;
+let (jwt3, _) = signer.sign()?;
 
 // Create reusable verifier
 let verifier = VerifierBuilder::new()
@@ -215,7 +263,7 @@ let verifier = VerifierBuilder::new()
 
 // Verify multiple tokens
 for jwt in [jwt1, jwt2, jwt3] {
-    match verifier.verify(&jwt.0) {
+    match verifier.verify(&jwt) {
         Ok(payload) => println!("Valid: {}", payload),
         Err(e) => println!("Invalid: {}", e),
     }
@@ -225,56 +273,82 @@ for jwt in [jwt1, jwt2, jwt3] {
 ### API Authentication
 
 ```rust
-use pq_jwt::{generate_keypair, sign, verify, MlDsaAlgo};
+use pq_jwt::{generate_keypair, MlDsaAlgo};
+use pq_jwt::signer::Builder;
+use pq_jwt::verifier;
+use std::time::{SystemTime, UNIX_EPOCH};
+use serde_json::json;
+
+let now = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs();
 
 // Server initialization
 let (server_private_key, server_public_key) =
     generate_keypair(MlDsaAlgo::Dsa65)?;
 
-// Issue API token
-let api_claims = r#"{
-    "api_key": "ak_live_123456",
-    "scope": ["read", "write"],
-    "rate_limit": 1000
-}"#;
+// Issue API token with custom claims
+let signer = Builder::new()
+    .algorithm(MlDsaAlgo::Dsa65)
+    .private_key(&server_private_key)
+    .issuer("https://api.myapp.com")
+    .expiration(now + 86400)  // 24 hours
+    .subject("ak_live_123456")
+    .custom_claims(json!({
+        "scope": ["read", "write"],
+        "rate_limit": 1000
+    }))
+    .build()?;
 
-let (api_token, _) = sign(MlDsaAlgo::Dsa65, api_claims, &server_private_key)?;
+let (api_token, _) = signer.sign()?;
 
 // Client sends: Authorization: Bearer <api_token>
 // Server verifies:
-match verify(&api_token, &server_public_key) {
+match verifier::verify(&api_token, &server_public_key) {
     Ok(claims) => println!("Valid API token: {}", claims),
     Err(e) => println!("Invalid token: {}", e),
 }
 ```
 
-### Custom Payload
+### Custom Payload with Type Safety
 
 ```rust
-use pq_jwt::{sign, verify, MlDsaAlgo};
+use pq_jwt::signer::Builder;
+use pq_jwt::{verify, MlDsaAlgo};
 use serde::{Deserialize, Serialize};
+use serde_json::json;
+use std::time::{SystemTime, UNIX_EPOCH};
 
 #[derive(Serialize, Deserialize)]
-struct CustomClaims {
+struct CustomData {
     user_id: u64,
     role: String,
     permissions: Vec<String>,
-    exp: u64,
 }
 
-let claims = CustomClaims {
+let now = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs();
+
+let custom_data = CustomData {
     user_id: 42,
     role: "admin".to_string(),
     permissions: vec!["read".to_string(), "write".to_string()],
-    exp: 1735689600,
 };
 
-let payload_json = serde_json::to_string(&claims)?;
-let (jwt, _) = sign(MlDsaAlgo::Dsa65, &payload_json, &private_key)?;
+// Build JWT with standard claims + custom data
+let signer = Builder::new()
+    .algorithm(MlDsaAlgo::Dsa65)
+    .private_key(&private_key)
+    .issuer("https://myapp.com")
+    .expiration(now + 3600)
+    .subject("user_42")
+    .custom_claims(serde_json::to_value(&custom_data)?)
+    .build()?;
 
-// Later...
+let (jwt, _) = signer.sign()?;
+
+// Later... verify and extract
 let verified = verify(&jwt, &public_key)?;
-let decoded: CustomClaims = serde_json::from_str(&verified)?;
+let payload: serde_json::Value = serde_json::from_str(&verified)?;
+let custom: CustomData = serde_json::from_value(payload)?;
+println!("User {} has role: {}", custom.user_id, custom.role);
 ```
 
 ## 🔑 Security Levels
@@ -354,14 +428,30 @@ Generates a new keypair for the specified algorithm.
 let (private_key, public_key) = generate_keypair(MlDsaAlgo::Dsa65)?;
 ```
 
-#### `sign(algo: MlDsaAlgo, payload: &str, private_key_hex: &str) -> Result<(String, String), String>`
+#### `sign(algo: MlDsaAlgo, iss: &str, exp: u64, private_key_hex: &str) -> Result<(String, String), String>`
 
-Signs a payload and returns a JWT.
+Signs JWT claims and returns a JWT with the public key.
+
+**Parameters**:
+- `algo` - ML-DSA algorithm variant
+- `iss` - Issuer (REQUIRED)
+- `exp` - Expiration time as Unix timestamp in seconds (REQUIRED)
+- `private_key_hex` - Hex-encoded private key
 
 **Returns**: `(jwt, public_key_hex)`
 
+**Note**: The `iat` (issued at) claim defaults to the current time.
+
 ```rust
-let (jwt, pub_key) = sign(MlDsaAlgo::Dsa65, payload, &private_key)?;
+use std::time::{SystemTime, UNIX_EPOCH};
+
+let now = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs();
+let (jwt, pub_key) = sign(
+    MlDsaAlgo::Dsa65,
+    "https://myapp.com",
+    now + 3600,
+    &private_key
+)?;
 ```
 
 #### `verify(jwt: &str, public_key_hex: &str) -> Result<String, String>`
@@ -418,22 +508,52 @@ let (priv_key, pub_key, source) = Builder::from(MlDsaAlgo::Dsa65)
 
 #### `signer::Builder`
 
-**Methods:**
-- `.algorithm(MlDsaAlgo)` - Set the algorithm variant
-- `.private_key(&str)` - Set the private key
-- `.build()` - Build Signer instance
+**Configuration Methods:**
+- `.algorithm(MlDsaAlgo)` - Set the algorithm variant (REQUIRED)
+- `.private_key(&str)` - Set the private key (REQUIRED)
 
-**Note:** The Key ID (kid) is automatically generated from the public key using SHA-256.
+**Standard JWT Claims Methods:**
+- `.issuer(&str)` - Set `iss` claim (REQUIRED)
+- `.expiration(u64)` - Set `exp` claim as Unix timestamp (REQUIRED)
+- `.subject(&str)` - Set `sub` claim (optional)
+- `.audience(&str)` - Set `aud` claim (optional)
+- `.issued_at(Option<u64>)` - Set `iat` claim, defaults to signing time if not set (optional)
+- `.not_before(u64)` - Set `nbf` claim as Unix timestamp (optional)
+- `.jwt_id(&str)` - Set `jti` claim (optional)
+- `.custom_claims(serde_json::Value)` - Add custom claims (optional)
+
+**Build Method:**
+- `.build()` - Build Signer instance, returns `Result<Signer, String>`
+
+**Signer Methods:**
+- `.sign()` - Sign the configured claims, returns `Result<(String, String), String>`
+
+**Notes:**
+- The Key ID (kid) is automatically generated from the public key using SHA-256
+- The `iat` (issued at) defaults to the current signing time if not explicitly set
+- Claims are validated before signing (`exp > iat`, `nbf <= iat`)
+- Custom claims that duplicate standard claim keys are ignored
 
 ```rust
 use pq_jwt::signer::Builder;
+use std::time::{SystemTime, UNIX_EPOCH};
+use serde_json::json;
+
+let now = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs();
 
 let signer = Builder::new()
     .algorithm(MlDsaAlgo::Dsa65)
     .private_key(&priv_key)
+    .issuer("https://myapp.com")
+    .expiration(now + 3600)
+    .subject("user@example.com")
+    .custom_claims(json!({
+        "role": "admin",
+        "permissions": ["read", "write"]
+    }))
     .build()?;
 
-let (jwt, pub_key) = signer.sign(payload)?;
+let (jwt, pub_key) = signer.sign()?;
 ```
 
 #### `verifier::Builder`
@@ -489,13 +609,45 @@ match source {
 
 ### From v0.1.x to v0.2.x
 
-The simple API remains **100% backward compatible**:
+**Breaking Change**: The `sign()` function signature has changed to require `iss` and `exp` parameters.
 
+**Old API (v0.1.x)**:
 ```rust
-// This still works exactly the same
-let (priv_key, pub_key) = generate_keypair(MlDsaAlgo::Dsa65)?;
+let payload = r#"{"sub": "user123", "exp": 1735689600}"#;
 let (jwt, _) = sign(MlDsaAlgo::Dsa65, payload, &priv_key)?;
-let payload = verify(&jwt, &pub_key)?;
+```
+
+**New API (v0.2.x)**:
+```rust
+use std::time::{SystemTime, UNIX_EPOCH};
+
+let now = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs();
+let (jwt, _) = sign(
+    MlDsaAlgo::Dsa65,
+    "https://myapp.com",  // issuer (required)
+    now + 3600,            // expiration (required)
+    &priv_key
+)?;
+```
+
+**For more complex claims, use the Builder API**:
+```rust
+use pq_jwt::signer::Builder;
+use serde_json::json;
+
+let signer = Builder::new()
+    .algorithm(MlDsaAlgo::Dsa65)
+    .private_key(&priv_key)
+    .issuer("https://myapp.com")
+    .expiration(now + 3600)
+    .subject("user123")
+    .custom_claims(json!({
+        "role": "admin",
+        "permissions": ["read", "write"]
+    }))
+    .build()?;
+
+let (jwt, _) = signer.sign()?;
 ```
 
 ### New Features Available
@@ -528,15 +680,29 @@ let signer = Builder::new()
 
 **Reusable Instances:**
 ```rust
+use std::time::{SystemTime, UNIX_EPOCH};
+
+let now = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs();
+
 // New: Create once, use multiple times
 let signer = signer::Builder::new()
     .algorithm(MlDsaAlgo::Dsa65)
     .private_key(&priv_key)
+    .issuer("https://myapp.com")
+    .expiration(now + 3600)
     .build()?;
 
-// Sign multiple payloads efficiently
-let jwt1 = signer.sign("payload1")?;
-let jwt2 = signer.sign("payload2")?;
+// Sign (no parameters needed - uses configured claims)
+let (jwt1, _) = signer.sign()?;
+let (jwt2, _) = signer.sign()?;
+```
+
+**JWT Claims Validation:**
+```rust
+// New: Automatic validation of JWT claims
+// - exp > iat (expiration must be after issued at)
+// - nbf <= iat (not before must be before or equal to issued at)
+// Validation happens automatically when calling sign()
 ```
 
 ## 🔒 Security Considerations

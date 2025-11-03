@@ -7,9 +7,11 @@ use super::Verifier;
 /// use pq_jwt::{generate_keypair, MlDsaAlgo};
 /// use pq_jwt::signer::sign;
 /// use pq_jwt::verifier::Builder;
+/// use std::time::{SystemTime, UNIX_EPOCH};
 ///
+/// let now = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs();
 /// let (private_key, public_key) = generate_keypair(MlDsaAlgo::Dsa65).unwrap();
-/// let (jwt, _) = sign(MlDsaAlgo::Dsa65, "test", &private_key).unwrap();
+/// let (jwt, _) = sign(MlDsaAlgo::Dsa65, "https://test.com", now + 3600, &private_key).unwrap();
 ///
 /// let verifier = Builder::new()
 ///     .public_key(&public_key)
@@ -17,6 +19,7 @@ use super::Verifier;
 ///     .unwrap();
 ///
 /// let payload = verifier.verify(&jwt).unwrap();
+/// assert!(payload.contains("https://test.com"));
 /// ```
 pub struct Builder {
     public_key: Option<String>,
@@ -93,14 +96,27 @@ mod tests {
 
     #[test]
     fn test_builder_and_verify() {
+        use std::time::{SystemTime, UNIX_EPOCH};
+
+        let now = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_secs();
         let (private_key, public_key) = generate_keypair(MlDsaAlgo::Dsa44).unwrap();
-        let (jwt, _) = sign(MlDsaAlgo::Dsa44, "test payload", &private_key).unwrap();
+        let (jwt, _) = sign(
+            MlDsaAlgo::Dsa44,
+            "https://test.com",
+            now + 3600,
+            &private_key,
+        )
+        .unwrap();
 
         let verifier = Builder::new().public_key(&public_key).build().unwrap();
 
         let result = verifier.verify(&jwt);
         assert!(result.is_ok());
-        assert_eq!(result.unwrap(), "test payload");
+        let payload = result.unwrap();
+        assert!(payload.contains("https://test.com"));
     }
 
     #[test]
