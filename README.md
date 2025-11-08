@@ -961,7 +961,7 @@ cache.set(jti, jwt, 3600)?;
 **Security Best Practices:**
 
 1. **Set appropriate cookie attributes:**
-   ```
+   ```http
    Set-Cookie: session_id={jti};
                HttpOnly;           // Prevent XSS access
                Secure;             // HTTPS only
