@@ -12,7 +12,7 @@ fn main() {
         .as_secs();
 
     // Create JWT with issuer="https://test.com"
-    let (jwt, _) = pq_jwt::signer::sign(
+    let (jwt, _, _) = pq_jwt::signer::sign(
         pq_jwt::MlDsaAlgo::Dsa65,
         "https://test.com",
         now + 3600,

@@ -16,7 +16,7 @@ use super::Verifier;
 ///
 /// let now = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs();
 /// let (private_key, public_key) = generate_keypair(MlDsaAlgo::Dsa65).unwrap();
-/// let (jwt, _) = sign(MlDsaAlgo::Dsa65, "https://test.com", now + 3600, &private_key).unwrap();
+/// let (jwt, _, _) = sign(MlDsaAlgo::Dsa65, "https://test.com", now + 3600, &private_key).unwrap();
 ///
 /// let verifier = Builder::new()
 ///     .public_key(&public_key)
@@ -204,7 +204,7 @@ mod tests {
             .unwrap()
             .as_secs();
         let (private_key, public_key) = generate_keypair(MlDsaAlgo::Dsa44).unwrap();
-        let (jwt, _) = sign(
+        let (jwt, _, _) = sign(
             MlDsaAlgo::Dsa44,
             "https://test.com",
             now + 3600,

@@ -13,7 +13,7 @@ fn main() {
         .as_secs();
 
     // Create JWT WITHOUT audience claim (using simple sign function)
-    let (jwt, _) = pq_jwt::signer::sign(
+    let (jwt, _, _) = pq_jwt::signer::sign(
         pq_jwt::MlDsaAlgo::Dsa65,
         "https://test.com",
         now + 3600,

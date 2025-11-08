@@ -36,7 +36,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 ///
 /// let now = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs();
 /// let (private_key, public_key) = generate_keypair(MlDsaAlgo::Dsa65).unwrap();
-/// let (jwt, _) = sign(MlDsaAlgo::Dsa65, "https://test.com", now + 3600, &private_key).unwrap();
+/// let (jwt, _, _) = sign(MlDsaAlgo::Dsa65, "https://test.com", now + 3600, &private_key).unwrap();
 ///
 /// let verifier = Builder::new()
 ///     .public_key(&public_key)
@@ -99,7 +99,7 @@ impl Verifier {
     ///
     /// let now = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs();
     /// let (private_key, public_key) = generate_keypair(MlDsaAlgo::Dsa65).unwrap();
-    /// let (jwt, _) = sign(MlDsaAlgo::Dsa65, "https://test.com", now + 3600, &private_key).unwrap();
+    /// let (jwt, _, _) = sign(MlDsaAlgo::Dsa65, "https://test.com", now + 3600, &private_key).unwrap();
     ///
     /// let verifier = Builder::new()
     ///     .public_key(&public_key)
@@ -285,7 +285,7 @@ mod tests {
             .unwrap()
             .as_secs();
         let (private_key, public_key) = generate_keypair(MlDsaAlgo::Dsa65).unwrap();
-        let (jwt, _) = sign(
+        let (jwt, _, _) = sign(
             MlDsaAlgo::Dsa65,
             "https://test.com",
             now + 3600,
@@ -316,14 +316,14 @@ mod tests {
         let (private_key, public_key) = generate_keypair(MlDsaAlgo::Dsa65).unwrap();
 
         // Both JWTs must have the same issuer since verifier validates issuer
-        let (jwt1, _) = sign(
+        let (jwt1, _, _) = sign(
             MlDsaAlgo::Dsa65,
             "https://test.com",
             now + 3600,
             &private_key,
         )
         .unwrap();
-        let (jwt2, _) = sign(
+        let (jwt2, _, _) = sign(
             MlDsaAlgo::Dsa65,
             "https://test.com",
             now + 7200,
@@ -355,7 +355,7 @@ mod tests {
             .as_secs();
         let (private_key1, _) = generate_keypair(MlDsaAlgo::Dsa65).unwrap();
         let (_, public_key2) = generate_keypair(MlDsaAlgo::Dsa65).unwrap();
-        let (jwt, _) = sign(
+        let (jwt, _, _) = sign(
             MlDsaAlgo::Dsa65,
             "https://test.com",
             now + 3600,
@@ -397,7 +397,7 @@ mod tests {
             .unwrap()
             .as_secs();
         let (private_key, public_key) = generate_keypair(MlDsaAlgo::Dsa65).unwrap();
-        let (jwt, _) = sign(
+        let (jwt, _, _) = sign(
             MlDsaAlgo::Dsa65,
             "https://test.com",
             now + 3600,
@@ -440,7 +440,7 @@ mod tests {
             .unwrap()
             .as_secs();
         let (private_key, public_key) = generate_keypair(MlDsaAlgo::Dsa65).unwrap();
-        let (jwt, _) = sign(
+        let (jwt, _, _) = sign(
             MlDsaAlgo::Dsa65,
             "https://myapp.com",
             now + 3600,
@@ -492,7 +492,7 @@ mod tests {
             .build()
             .unwrap();
 
-        let (jwt, _) = signer.sign().unwrap();
+        let (jwt, _, _) = signer.sign().unwrap();
 
         let verifier = Verifier::new(
             public_key,
@@ -528,7 +528,7 @@ mod tests {
             .build()
             .unwrap();
 
-        let (jwt, _) = signer.sign().unwrap();
+        let (jwt, _, _) = signer.sign().unwrap();
 
         // Should fail without leeway
         let verifier = Verifier::new(
@@ -560,7 +560,7 @@ mod tests {
         let (private_key, public_key) = generate_keypair(MlDsaAlgo::Dsa65).unwrap();
 
         // Create JWT WITHOUT audience claim using simple sign function
-        let (jwt, _) = crate::signer::sign(
+        let (jwt, _, _) = crate::signer::sign(
             MlDsaAlgo::Dsa65,
             "https://test.com",
             now + 3600,

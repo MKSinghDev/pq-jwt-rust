@@ -2,6 +2,7 @@ use super::{Claims, Signer};
 use crate::algorithm::MlDsaAlgo;
 use serde_json::Value as JsonValue;
 use std::collections::HashMap;
+use uuid::Uuid;
 
 /// Builder for constructing a Signer with JWT claims
 ///
@@ -26,7 +27,7 @@ use std::collections::HashMap;
 ///     .build()
 ///     .unwrap();
 ///
-/// let (jwt, _) = signer.sign().unwrap();
+/// let (jwt, _, _) = signer.sign().unwrap();
 /// ```
 pub struct Builder {
     algo: Option<MlDsaAlgo>,
@@ -39,7 +40,7 @@ pub struct Builder {
     issued_at: Option<u64>, // None = auto-populate or skip (based on skip_iat), Some(ts) = use ts
     skip_iat: bool,         // If true, do not auto-populate iat (default: false)
     not_before: Option<u64>,
-    jwt_id: Option<String>,
+    jwt_id: String,
     custom: HashMap<String, JsonValue>,
 }
 
@@ -56,7 +57,7 @@ impl Builder {
             issued_at: None,
             skip_iat: false, // Default: auto-populate iat
             not_before: None,
-            jwt_id: None,
+            jwt_id: Uuid::now_v7().to_string(),
             custom: HashMap::new(),
         }
     }
@@ -135,7 +136,7 @@ impl Builder {
     ///     .build()
     ///     .unwrap();
     ///
-    /// let (jwt, _) = signer.sign().unwrap();
+    /// let (jwt, _, _) = signer.sign().unwrap();
     /// // JWT will not have an iat claim
     /// ```
     pub fn skip_issued_at(mut self) -> Self {
@@ -152,7 +153,7 @@ impl Builder {
 
     /// Sets the JWT ID (optional)
     pub fn jwt_id(mut self, jti: impl Into<String>) -> Self {
-        self.jwt_id = Some(jti.into());
+        self.jwt_id = jti.into();
         self
     }
 
@@ -247,6 +248,7 @@ mod tests {
     use crate::keygen::generate_keypair;
     use serde_json::json;
     use std::time::{SystemTime, UNIX_EPOCH};
+    use uuid::Uuid;
 
     #[test]
     fn test_builder_basic() {
@@ -370,7 +372,7 @@ mod tests {
             .subject("user@example.com")
             .audience("https://api.example.com")
             .not_before(now)
-            .jwt_id("unique-jwt-id")
+            .jwt_id(Uuid::now_v7().to_string())
             .build()
             .unwrap();
 
@@ -427,7 +429,7 @@ mod tests {
         let result = signer.sign();
         assert!(result.is_ok());
 
-        let (jwt, _) = result.unwrap();
+        let (jwt, _, _) = result.unwrap();
 
         // Decode the JWT payload to verify claims
         let parts: Vec<&str> = jwt.split('.').collect();
