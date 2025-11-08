@@ -56,7 +56,7 @@
 - ✅ sub check
 - ✅ aud check
 - ✅ nbf check
-- ⚠️ jti check (stored, not validated)
+- ✅ jti (REQUIRED, auto-generated UUID v7)
 - ✅ typ check (always "JWT")
 - ✅ Leeway support
 
@@ -99,7 +99,7 @@ fn main() -> Result<(), String> {
 
     // 2. Create and sign a JWT with issuer and expiration
     let now = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs();
-    let (jwt, _) = sign(
+    let (jwt, _, jti) = sign(
         MlDsaAlgo::Dsa65,
         "https://myapp.com",      // Issuer
         now + 3600,                // Expires in 1 hour
@@ -107,6 +107,7 @@ fn main() -> Result<(), String> {
     )?;
 
     println!("JWT: {}", jwt);
+    println!("JWT ID (jti): {}", jti);
 
     // 3. Verify the JWT
     let verified_payload = verify(&jwt, &public_key, "https://myapp.com")?;
@@ -130,7 +131,7 @@ let (private_key, public_key) = generate_keypair(MlDsaAlgo::Dsa65)?;
 
 // Create user session token
 let now = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs();
-let (jwt, _) = sign(
+let (jwt, _, jti) = sign(
     MlDsaAlgo::Dsa65,
     "https://myapp.com",    // Issuer
     now + 3600,              // Expires in 1 hour
@@ -168,7 +169,7 @@ let signer = Builder::new()
     }))
     .build()?;
 
-let (jwt, _) = signer.sign()?;
+let (jwt, _, jti) = signer.sign()?;
 
 // Verify
 let payload = verify(&jwt, &public_key, "https://myapp.com")?;
@@ -278,7 +279,7 @@ let signer = SignerBuilder::new()
     .expiration(now + 3600)
     .build()?;
 
-let (jwt, _) = signer.sign()?;
+let (jwt, _, jti) = signer.sign()?;
 
 // Verify (kid from JWT header can be used to identify which key to use)
 let verifier = VerifierBuilder::new()
@@ -308,9 +309,9 @@ let signer = SignerBuilder::new()
     .build()?;
 
 // Sign (no parameters needed - uses configured claims)
-let (jwt1, _) = signer.sign()?;
-let (jwt2, _) = signer.sign()?;
-let (jwt3, _) = signer.sign()?;
+let (jwt1, _, jti1) = signer.sign()?;
+let (jwt2, _, jti2) = signer.sign()?;
+let (jwt3, _, jti3) = signer.sign()?;
 
 // Create reusable verifier
 let verifier = VerifierBuilder::new()
@@ -355,7 +356,7 @@ let signer = Builder::new()
     }))
     .build()?;
 
-let (api_token, _) = signer.sign()?;
+let (api_token, _, jti) = signer.sign()?;
 
 // Client sends: Authorization: Bearer <api_token>
 // Server verifies:
@@ -399,7 +400,7 @@ let signer = Builder::new()
     .custom_claims(serde_json::to_value(&custom_data)?)
     .build()?;
 
-let (jwt, _) = signer.sign()?;
+let (jwt, _, jti) = signer.sign()?;
 
 // Later... verify and extract
 let verified = verify(&jwt, &public_key, "https://myapp.com")?;
@@ -485,9 +486,9 @@ Generates a new keypair for the specified algorithm.
 let (private_key, public_key) = generate_keypair(MlDsaAlgo::Dsa65)?;
 ```
 
-#### `sign(algo: MlDsaAlgo, iss: &str, exp: u64, private_key_hex: &str) -> Result<(String, String), String>`
+#### `sign(algo: MlDsaAlgo, iss: &str, exp: u64, private_key_hex: &str) -> Result<(String, String, String), String>`
 
-Signs JWT claims and returns a JWT with the public key.
+Signs JWT claims and returns a JWT with the public key and JWT ID.
 
 **Parameters**:
 - `algo` - ML-DSA algorithm variant
@@ -495,20 +496,24 @@ Signs JWT claims and returns a JWT with the public key.
 - `exp` - Expiration time as Unix timestamp in seconds (REQUIRED)
 - `private_key_hex` - Hex-encoded private key
 
-**Returns**: `(jwt, public_key_hex)`
+**Returns**: `(jwt, public_key_hex, jti)`
+- `jwt` - The signed JWT string
+- `public_key_hex` - Hex-encoded public key (for verification)
+- `jti` - JWT ID (UUID v7 format) - useful for session management
 
-**Note**: The `iat` (issued at) claim defaults to the current time.
+**Note**: The `iat` (issued at) claim defaults to the current time. The `jti` is automatically generated as a UUID v7.
 
 ```rust
 use std::time::{SystemTime, UNIX_EPOCH};
 
 let now = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs();
-let (jwt, pub_key) = sign(
+let (jwt, pub_key, jti) = sign(
     MlDsaAlgo::Dsa65,
     "https://myapp.com",
     now + 3600,
     &private_key
 )?;
+println!("JWT ID for session tracking: {}", jti);
 ```
 
 #### `verify(jwt: &str, public_key_hex: &str, expected_issuer: &str) -> Result<String, String>`
@@ -581,17 +586,18 @@ let (priv_key, pub_key, source) = Builder::from(MlDsaAlgo::Dsa65)
 - `.audience(&str)` - Set `aud` claim (optional)
 - `.issued_at(Option<u64>)` - Set `iat` claim, defaults to signing time if not set (optional)
 - `.not_before(u64)` - Set `nbf` claim as Unix timestamp (optional)
-- `.jwt_id(&str)` - Set `jti` claim (optional)
+- `.jwt_id(&str)` - Override the auto-generated `jti` claim (UUID v7 by default)
 - `.custom_claims(serde_json::Value)` - Add custom claims (optional)
 
 **Build Method:**
 - `.build()` - Build Signer instance, returns `Result<Signer, String>`
 
 **Signer Methods:**
-- `.sign()` - Sign the configured claims, returns `Result<(String, String), String>`
+- `.sign()` - Sign the configured claims, returns `Result<(String, String, String), String>` as `(jwt, public_key, jti)`
 
 **Notes:**
 - The Key ID (kid) is automatically generated from the public key using SHA-256
+- The JWT ID (jti) is automatically generated as UUID v7 (time-ordered) if not explicitly set
 - The `iat` (issued at) defaults to the current signing time if not explicitly set
 - Claims are validated before signing (`exp > iat`, `nbf <= iat`)
 - Custom claims that duplicate standard claim keys are ignored
@@ -615,7 +621,7 @@ let signer = Builder::new()
     }))
     .build()?;
 
-let (jwt, pub_key) = signer.sign()?;
+let (jwt, pub_key, jti) = signer.sign()?;
 ```
 
 #### `verifier::Builder`
@@ -718,12 +724,13 @@ let (jwt, _) = sign(MlDsaAlgo::Dsa65, payload, &priv_key)?;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 let now = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs();
-let (jwt, _) = sign(
+let (jwt, _, jti) = sign(
     MlDsaAlgo::Dsa65,
     "https://myapp.com",  // issuer (required)
     now + 3600,            // expiration (required)
     &priv_key
 )?;
+// jti is now returned - use it for session management
 ```
 
 **For more complex claims, use the Builder API**:
@@ -743,7 +750,7 @@ let signer = Builder::new()
     }))
     .build()?;
 
-let (jwt, _) = signer.sign()?;
+let (jwt, _, jti) = signer.sign()?;
 ```
 
 ### New Features Available
@@ -795,8 +802,8 @@ let signer = signer::Builder::new()
     .build()?;
 
 // Sign (no parameters needed - uses configured claims)
-let (jwt1, _) = signer.sign()?;
-let (jwt2, _) = signer.sign()?;
+let (jwt1, _, jti1) = signer.sign()?;
+let (jwt2, _, jti2) = signer.sign()?;
 ```
 
 **JWT Claims Validation:**
@@ -875,13 +882,167 @@ use std::time::{SystemTime, UNIX_EPOCH};
 let now = SystemTime::now().duration_since(UNIX_EPOCH)?.as_secs();
 
 // Sign with issuer and expiration
-let (jwt, _) = sign(
+let (jwt, _, jti) = sign(
     MlDsaAlgo::Dsa65,
     "https://example.com",  // issuer
     now + 3600,             // expiration (1 hour from now)
     &private_key
 )?;
 ```
+
+## 🍪 Session Management for Large JWTs
+
+Post-quantum JWTs are significantly larger (3-6 KB) than classical JWTs (~300 bytes), making them impractical to store in cookies due to browser size limits (~4 KB per cookie). Here's a recommended pattern for managing sessions:
+
+### Cookie + Server-Side Storage Pattern
+
+Instead of storing the entire JWT in a cookie, store only the `jti` (JWT ID) and keep the full JWT server-side:
+
+```rust
+use pq_jwt::{generate_keypair, sign, verify, MlDsaAlgo};
+use std::time::{SystemTime, UNIX_EPOCH};
+
+// 1. Generate and sign JWT
+let (private_key, public_key) = generate_keypair(MlDsaAlgo::Dsa65)?;
+let now = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs();
+
+let (jwt, _, jti) = sign(
+    MlDsaAlgo::Dsa65,
+    "https://myapp.com",
+    now + 3600,  // 1 hour expiration
+    &private_key
+)?;
+
+// 2. Store JWT server-side (Redis, database, etc.)
+// redis.set(jti, jwt, expiry=3600)
+// OR
+// database.insert(jti, jwt, expires_at)
+
+// 3. Store only the jti in cookie (36 bytes as UUID)
+// Set-Cookie: session_id={jti}; HttpOnly; Secure; SameSite=Strict
+
+// 4. On subsequent requests, retrieve JWT using jti
+// let jwt = redis.get(session_id)?;
+// let payload = verify(&jwt, &public_key, "https://myapp.com")?;
+```
+
+### Why UUID v7 for JTI?
+
+This library uses UUID v7 (time-ordered) for `jti`, which provides several benefits:
+
+- **Sortable**: UUIDs are time-ordered, making them efficient for database indexing
+- **K-sorted**: Improves database performance by reducing index fragmentation
+- **Timestamp component**: Can extract creation time from the UUID
+- **Collision-resistant**: Cryptographically random with timestamp prefix
+
+### Implementation Considerations
+
+**Storage Backend Options:**
+```rust
+// Option 1: Redis (recommended for high-performance)
+// - TTL automatically expires sessions
+// - In-memory speed for lookups
+redis.setex(jti, 3600, jwt)?;
+
+// Option 2: Database (PostgreSQL, MySQL)
+// - Persistent storage
+// - Can query by user_id, created_at, etc.
+db.execute(
+    "INSERT INTO sessions (jti, jwt, expires_at) VALUES ($1, $2, $3)",
+    &[&jti, &jwt, &(now + 3600)]
+)?;
+
+// Option 3: Distributed cache (Memcached)
+// - Multi-server support
+// - Automatic eviction
+cache.set(jti, jwt, 3600)?;
+```
+
+**Security Best Practices:**
+
+1. **Set appropriate cookie attributes:**
+   ```http
+   Set-Cookie: session_id={jti};
+               HttpOnly;           // Prevent XSS access
+               Secure;             // HTTPS only
+               SameSite=Strict;    // CSRF protection
+               Max-Age=3600        // Match JWT expiration
+   ```
+
+2. **Implement TTL matching JWT expiration:**
+   - Server-side storage TTL should match JWT `exp` claim
+   - Prevents storage of expired tokens
+
+3. **Rate limit lookups by jti:**
+   - Prevent enumeration attacks
+   - Limit requests per IP/user
+
+4. **Clean up expired sessions:**
+   ```rust
+   // Periodic cleanup for database-backed storage
+   db.execute("DELETE FROM sessions WHERE expires_at < NOW()")?;
+   ```
+
+### Example: Full Web Application Flow
+
+```rust
+// Login endpoint
+async fn login(credentials: Credentials) -> Result<Response> {
+    // Authenticate user...
+
+    let now = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs();
+    let (jwt, _, jti) = sign(
+        MlDsaAlgo::Dsa65,
+        "https://myapp.com",
+        now + 3600,
+        &private_key
+    )?;
+
+    // Store in Redis with TTL
+    redis.setex(&jti, 3600, &jwt).await?;
+
+    // Return cookie with jti only (36 bytes vs 4.5 KB)
+    Ok(Response::new()
+        .cookie(Cookie::build("session_id", jti)
+            .http_only(true)
+            .secure(true)
+            .same_site(SameSite::Strict)
+            .max_age(Duration::seconds(3600))
+            .finish()))
+}
+
+// Protected endpoint
+async fn protected(session_id: String) -> Result<Response> {
+    // Lookup full JWT from Redis
+    let jwt = redis.get(&session_id).await?
+        .ok_or("Session not found")?;
+
+    // Verify JWT
+    let payload = verify(&jwt, &public_key, "https://myapp.com")?;
+
+    // Process request...
+    Ok(Response::new().body(payload))
+}
+
+// Logout endpoint
+async fn logout(session_id: String) -> Result<Response> {
+    // Delete from Redis
+    redis.del(&session_id).await?;
+
+    Ok(Response::new()
+        .cookie(Cookie::build("session_id", "")
+            .max_age(Duration::seconds(0))
+            .finish()))
+}
+```
+
+### Size Comparison: Cookie Storage
+
+| Approach | Cookie Size | Storage Location |
+|----------|-------------|------------------|
+| **Classical JWT in cookie** | ~300 bytes | Client |
+| **PQ JWT in cookie** | ~4.5 KB ❌ (exceeds limits) | Client |
+| **JTI in cookie** | 36 bytes ✅ | Client (jti) + Server (JWT) |
 
 ## 🤔 Why Post-Quantum?
 

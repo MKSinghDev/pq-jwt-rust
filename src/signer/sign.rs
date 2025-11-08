@@ -13,7 +13,7 @@ use crate::algorithm::MlDsaAlgo;
 /// * `private_key_hex` - Hex-encoded private signing key
 ///
 /// # Returns
-/// * `Ok((jwt, public_key_hex))` - JWT string and hex-encoded public key
+/// * `Ok((jwt, public_key_hex, jti))` - JWT string, hex-encoded public key, and uuid v7 as jti
 /// * `Err(String)` - Error message if signing fails
 ///
 /// # Example
@@ -25,7 +25,7 @@ use crate::algorithm::MlDsaAlgo;
 /// let (private_key, _) = generate_keypair(MlDsaAlgo::Dsa65).unwrap();
 /// let now = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs();
 ///
-/// let (jwt, public_key) = sign(
+/// let (jwt, public_key, jti) = sign(
 ///     MlDsaAlgo::Dsa65,
 ///     "https://myapp.com",
 ///     now + 3600,
@@ -37,7 +37,7 @@ pub fn sign(
     iss: &str,
     exp: u64,
     private_key_hex: &str,
-) -> Result<(String, String), String> {
+) -> Result<(String, String, String), String> {
     let signer = Builder::new()
         .algorithm(algo)
         .private_key(private_key_hex)
@@ -50,6 +50,8 @@ pub fn sign(
 
 #[cfg(test)]
 mod tests {
+    use uuid::Uuid;
+
     use super::*;
     use crate::keygen::generate_keypair;
     use std::time::{SystemTime, UNIX_EPOCH};
@@ -70,10 +72,11 @@ mod tests {
         );
         assert!(result.is_ok());
 
-        let (jwt, returned_pub_key) = result.unwrap();
+        let (jwt, returned_pub_key, jti) = result.unwrap();
         assert_eq!(public_key, returned_pub_key);
         assert!(jwt.contains('.'));
         assert_eq!(jwt.split('.').count(), 3); // header.payload.signature
+        assert!(Uuid::parse_str(&jti).is_ok());
     }
 
     #[test]

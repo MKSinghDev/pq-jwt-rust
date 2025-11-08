@@ -22,7 +22,7 @@ use super::Builder;
 ///
 /// let now = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs();
 /// let (private_key, public_key) = generate_keypair(MlDsaAlgo::Dsa65).unwrap();
-/// let (jwt, _) = sign(MlDsaAlgo::Dsa65, "https://test.com", now + 3600, &private_key).unwrap();
+/// let (jwt, _, _) = sign(MlDsaAlgo::Dsa65, "https://test.com", now + 3600, &private_key).unwrap();
 /// let verified_payload = verify(&jwt, &public_key, "https://test.com").unwrap();
 /// assert!(verified_payload.contains("https://test.com"));
 /// ```
@@ -49,7 +49,7 @@ mod tests {
             .unwrap()
             .as_secs();
         let (private_key, public_key) = generate_keypair(MlDsaAlgo::Dsa65).unwrap();
-        let (jwt, _) = sign(
+        let (jwt, _, _) = sign(
             MlDsaAlgo::Dsa65,
             "https://test.com",
             now + 3600,
@@ -72,7 +72,7 @@ mod tests {
         let (private_key1, _) = generate_keypair(MlDsaAlgo::Dsa65).unwrap();
         let (_, public_key2) = generate_keypair(MlDsaAlgo::Dsa65).unwrap();
 
-        let (jwt, _) = sign(
+        let (jwt, _, _) = sign(
             MlDsaAlgo::Dsa65,
             "https://test.com",
             now + 3600,
@@ -98,7 +98,7 @@ mod tests {
             .unwrap()
             .as_secs();
         let (private_key, public_key) = generate_keypair(MlDsaAlgo::Dsa65).unwrap();
-        let (jwt, _) = sign(
+        let (jwt, _, _) = sign(
             MlDsaAlgo::Dsa65,
             "https://test.com",
             now + 3600,
@@ -120,7 +120,7 @@ mod tests {
             .as_secs();
         for algo in [MlDsaAlgo::Dsa44, MlDsaAlgo::Dsa65, MlDsaAlgo::Dsa87] {
             let (private_key, public_key) = generate_keypair(algo).unwrap();
-            let (jwt, _) = sign(algo, "https://test.com", now + 3600, &private_key).unwrap();
+            let (jwt, _, _) = sign(algo, "https://test.com", now + 3600, &private_key).unwrap();
             let result = verify(&jwt, &public_key, "https://test.com");
             assert!(result.is_ok());
         }

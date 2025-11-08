@@ -21,7 +21,7 @@
 //!
 //! // Sign with issuer and expiration
 //! let now = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs();
-//! let (jwt, _public_key) = sign(
+//! let (jwt, _public_key, _jti) = sign(
 //!     MlDsaAlgo::Dsa65,
 //!     "https://myapp.com",
 //!     now + 3600,
@@ -56,6 +56,8 @@ pub use verifier::verify;
 
 #[cfg(test)]
 mod tests {
+    use uuid::Uuid;
+
     use super::*;
     use std::time::{SystemTime, UNIX_EPOCH};
 
@@ -70,7 +72,7 @@ mod tests {
         let (private_key, public_key) = generate_keypair(MlDsaAlgo::Dsa65).unwrap();
 
         // Sign with issuer and expiration
-        let (jwt, returned_pub_key) = sign(
+        let (jwt, returned_pub_key, jti) = sign(
             MlDsaAlgo::Dsa65,
             "https://test.com",
             now + 3600,
@@ -84,6 +86,7 @@ mod tests {
         // Verify JWT
         let verified_payload = verify(&jwt, &public_key, "https://test.com").unwrap();
         assert!(verified_payload.contains("https://test.com"));
+        assert!(Uuid::parse_str(&jti).is_ok());
     }
 
     #[test]
@@ -95,7 +98,7 @@ mod tests {
 
         for algo in [MlDsaAlgo::Dsa44, MlDsaAlgo::Dsa65, MlDsaAlgo::Dsa87] {
             let (private_key, public_key) = generate_keypair(algo).unwrap();
-            let (jwt, _) = sign(algo, "https://test.com", now + 3600, &private_key).unwrap();
+            let (jwt, _, _) = sign(algo, "https://test.com", now + 3600, &private_key).unwrap();
             let verified_payload = verify(&jwt, &public_key, "https://test.com").unwrap();
             assert!(verified_payload.contains("https://test.com"));
         }
@@ -111,7 +114,7 @@ mod tests {
         let (private_key1, _) = generate_keypair(MlDsaAlgo::Dsa65).unwrap();
         let (_, public_key2) = generate_keypair(MlDsaAlgo::Dsa65).unwrap();
 
-        let (jwt, _) = sign(
+        let (jwt, _, _) = sign(
             MlDsaAlgo::Dsa65,
             "https://test.com",
             now + 3600,

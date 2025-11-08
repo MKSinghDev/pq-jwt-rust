@@ -3,6 +3,7 @@ mod sign;
 
 pub use builder::Builder;
 pub use sign::sign;
+use uuid::Uuid;
 
 use crate::algorithm::MlDsaAlgo;
 use crate::header::JwtHeader;
@@ -44,9 +45,8 @@ pub struct Claims {
     /// Not before (optional) - Unix timestamp
     #[serde(skip_serializing_if = "Option::is_none")]
     pub nbf: Option<u64>,
-    /// JWT ID (optional)
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub jti: Option<String>,
+    /// JWT ID (REQUIRED) - Unique identifier for the JWT
+    pub jti: String,
     /// Additional custom claims
     #[serde(flatten)]
     pub custom: HashMap<String, JsonValue>,
@@ -62,7 +62,7 @@ impl Claims {
             sub: None,
             aud: None,
             nbf: None,
-            jti: None,
+            jti: Uuid::now_v7().to_string(),
             custom: HashMap::new(),
         }
     }
@@ -121,7 +121,7 @@ impl Claims {
 ///     .build()
 ///     .unwrap();
 ///
-/// let (jwt, pub_key) = signer.sign().unwrap();
+/// let (jwt, pub_key, jti) = signer.sign().unwrap();
 /// ```
 #[derive(Debug)]
 pub struct Signer {
@@ -159,7 +159,7 @@ impl Signer {
     /// it defaults to the current signing time.
     ///
     /// # Returns
-    /// * `Ok((jwt, public_key_hex))` - JWT string and hex-encoded public key
+    /// * `Ok((jwt, public_key_hex, jti))` - JWT string, hex-encoded public key, and uuid v7 as jti
     /// * `Err(String)` - Error message if signing fails
     ///
     /// # Example
@@ -179,9 +179,9 @@ impl Signer {
     ///     .build()
     ///     .unwrap();
     ///
-    /// let (jwt, pub_key) = signer.sign().unwrap();
+    /// let (jwt, pub_key, jti) = signer.sign().unwrap();
     /// ```
-    pub fn sign(&self) -> Result<(String, String), String> {
+    pub fn sign(&self) -> Result<(String, String, String), String> {
         // Clone claims and set iat to now if not set and auto_issue_iat is enabled
         let mut claims = self.claims.clone();
         if claims.iat.is_none() && self.auto_issue_iat {
@@ -199,13 +199,13 @@ impl Signer {
         let payload = claims.to_json()?;
 
         match self.algo {
-            MlDsaAlgo::Dsa44 => self.sign_impl::<MlDsa44>(&payload),
-            MlDsaAlgo::Dsa65 => self.sign_impl::<MlDsa65>(&payload),
-            MlDsaAlgo::Dsa87 => self.sign_impl::<MlDsa87>(&payload),
+            MlDsaAlgo::Dsa44 => self.sign_impl::<MlDsa44>(&payload, &claims.jti),
+            MlDsaAlgo::Dsa65 => self.sign_impl::<MlDsa65>(&payload, &claims.jti),
+            MlDsaAlgo::Dsa87 => self.sign_impl::<MlDsa87>(&payload, &claims.jti),
         }
     }
 
-    fn sign_impl<P>(&self, payload: &str) -> Result<(String, String), String>
+    fn sign_impl<P>(&self, payload: &str, jti: &str) -> Result<(String, String, String), String>
     where
         P: KeyGen,
     {
@@ -250,7 +250,7 @@ impl Signer {
         // Create JWT
         let jwt = format!("{}.{}", signing_input, signature_b64);
 
-        Ok((jwt, pub_key_hex))
+        Ok((jwt, pub_key_hex, jti.to_string()))
     }
 
     /// Returns the algorithm being used by this signer
@@ -295,8 +295,8 @@ mod tests {
         let claims2 = Claims::new("https://test.com", now + 7200);
         let signer2 = Signer::new(MlDsaAlgo::Dsa65, private_key, claims2, true);
 
-        let (jwt1, _) = signer1.sign().unwrap();
-        let (jwt2, _) = signer2.sign().unwrap();
+        let (jwt1, _, _) = signer1.sign().unwrap();
+        let (jwt2, _, _) = signer2.sign().unwrap();
 
         assert_ne!(jwt1, jwt2);
     }
@@ -426,7 +426,7 @@ mod tests {
             .build()
             .unwrap();
 
-        let (jwt, _) = signer.sign().unwrap();
+        let (jwt, _, _) = signer.sign().unwrap();
 
         // Decode and check that iat is not present
         let parts: Vec<&str> = jwt.split('.').collect();
